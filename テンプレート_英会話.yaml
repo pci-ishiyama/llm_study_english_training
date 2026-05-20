@@ -1,0 +1,1593 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  IT-English Trainee (AWS Edition) - Infrastructure CloudFormation Template
+  Deploys Cognito, API Gateway, Lambda, DynamoDB, S3, SQS, IAM Roles, and CloudWatch resources
+
+# ==============================================================================
+# Parameters
+# ==============================================================================
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, stg, prod]
+    Description: Deployment environment (dev / stg / prod)
+
+  AlertEmail:
+    Type: String
+    Default: alert@example.com
+    Description: Email address for CloudWatch alarm notifications
+
+# ==============================================================================
+# Conditions
+# ==============================================================================
+Conditions:
+  IsProd: !Equals [!Ref Env, prod]
+  IsStgOrProd: !Or
+    - !Equals [!Ref Env, stg]
+    - !Equals [!Ref Env, prod]
+
+# ==============================================================================
+# Mappings
+# ==============================================================================
+Mappings:
+  EnvConfig:
+    dev:
+      LogRetentionDays: 7
+      XRayTracingMode: PassThrough
+      ChatHandlerReservedConcurrency: 0
+      FeedbackGeneratorReservedConcurrency: 0
+    stg:
+      LogRetentionDays: 30
+      XRayTracingMode: Active
+      ChatHandlerReservedConcurrency: 20
+      FeedbackGeneratorReservedConcurrency: 20
+    prod:
+      LogRetentionDays: 90
+      XRayTracingMode: Active
+      ChatHandlerReservedConcurrency: 50
+      FeedbackGeneratorReservedConcurrency: 50
+
+# ==============================================================================
+# Resources
+# ==============================================================================
+Resources:
+
+  # ============================================================
+  # SNS Topic for CloudWatch Alarms
+  # ============================================================
+  AlarmSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub it-english-alarms-${Env}
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  # ============================================================
+  # Amazon Cognito
+  # ============================================================
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub it-english-trainee-user-pool-${Env}
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: englishLevel
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: learningGoal
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub it-english-trainee-app-client-${Env}
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 1       # hours
+      IdTokenValidity: 1           # hours
+      RefreshTokenValidity: 30     # days
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      PreventUserExistenceErrors: ENABLED
+
+  # ============================================================
+  # Amazon DynamoDB Tables
+  # ============================================================
+
+  DynamoDBUsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub it-english-users-${Env}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - { AttributeName: userId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: userId, KeyType: HASH }
+
+  DynamoDBScenariosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub it-english-scenarios-${Env}
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 1
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - { AttributeName: scenarioId, AttributeType: S }
+      KeySchema:
+        - { AttributeName: scenarioId, KeyType: HASH }
+
+  DynamoDBSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub it-english-sessions-${Env}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      AttributeDefinitions:
+        - { AttributeName: sessionId,  AttributeType: S }
+        - { AttributeName: userId,     AttributeType: S }
+        - { AttributeName: scenarioId, AttributeType: S }
+        - { AttributeName: createdAt,  AttributeType: S }
+      KeySchema:
+        - { AttributeName: sessionId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: userId-createdAt-index
+          KeySchema:
+            - { AttributeName: userId,    KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: scenarioId-createdAt-index
+          KeySchema:
+            - { AttributeName: scenarioId, KeyType: HASH }
+            - { AttributeName: createdAt,  KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  DynamoDBChatlogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub it-english-chatlogs-${Env}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      AttributeDefinitions:
+        - { AttributeName: chatLogId,  AttributeType: S }
+        - { AttributeName: sessionId,  AttributeType: S }
+        - { AttributeName: userId,     AttributeType: S }
+        - { AttributeName: timestamp,  AttributeType: S }
+      KeySchema:
+        - { AttributeName: chatLogId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: sessionId-timestamp-index
+          KeySchema:
+            - { AttributeName: sessionId, KeyType: HASH }
+            - { AttributeName: timestamp, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: userId-timestamp-index
+          KeySchema:
+            - { AttributeName: userId,    KeyType: HASH }
+            - { AttributeName: timestamp, KeyType: RANGE }
+          Projection: { ProjectionType: KEYS_ONLY }
+
+  DynamoDBFeedbacksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub it-english-feedbacks-${Env}
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - { AttributeName: feedbackId, AttributeType: S }
+        - { AttributeName: userId,     AttributeType: S }
+        - { AttributeName: sessionId,  AttributeType: S }
+        - { AttributeName: scenarioId, AttributeType: S }
+        - { AttributeName: createdAt,  AttributeType: S }
+      KeySchema:
+        - { AttributeName: feedbackId, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: userId-createdAt-index
+          KeySchema:
+            - { AttributeName: userId,    KeyType: HASH }
+            - { AttributeName: createdAt, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: sessionId-index
+          KeySchema:
+            - { AttributeName: sessionId, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+        - IndexName: userId-scenarioId-index
+          KeySchema:
+            - { AttributeName: userId,     KeyType: HASH }
+            - { AttributeName: scenarioId, KeyType: RANGE }
+          Projection: { ProjectionType: KEYS_ONLY }
+
+  # ============================================================
+  # Amazon S3
+  # ============================================================
+  AudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub it-english-trainee-audio-${Env}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Suspended
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: move-to-glacier
+            Status: Enabled
+            Prefix: audio/
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: GLACIER_IR
+          - Id: auto-delete
+            Status: Enabled
+            Prefix: audio/
+            ExpirationInDays: 90
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT]
+            AllowedOrigins: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+
+  # ============================================================
+  # Amazon SQS
+  # ============================================================
+  FeedbackDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub it-english-feedback-dlq-${Env}
+      MessageRetentionPeriod: 1209600   # 14 days
+
+  FeedbackQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub it-english-feedback-queue-${Env}
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 345600    # 4 days
+      MaximumMessageSize: 262144        # 256 KB
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FeedbackDLQ.Arn
+        maxReceiveCount: 3
+
+  # ============================================================
+  # IAM Roles for Lambda
+  # ============================================================
+
+  ChatHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-chat-handler-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ChatHandlerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource:
+                  - !GetAtt DynamoDBSessionsTable.Arn
+                  - !Sub ${DynamoDBSessionsTable.Arn}/index/*
+                  - !GetAtt DynamoDBChatlogsTable.Arn
+                  - !Sub ${DynamoDBChatlogsTable.Arn}/index/*
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+              - Effect: Allow
+                Action: polly:SynthesizeSpeech
+                Resource: '*'
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub ${AudioBucket.Arn}/*
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
+  FeedbackGeneratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-feedback-generator-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FeedbackGeneratorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource:
+                  - !GetAtt DynamoDBChatlogsTable.Arn
+                  - !Sub ${DynamoDBChatlogsTable.Arn}/index/*
+                  - !GetAtt DynamoDBFeedbacksTable.Arn
+                  - !Sub ${DynamoDBFeedbacksTable.Arn}/index/*
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt FeedbackQueue.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
+  SessionManagerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-session-manager-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SessionManagerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
+                Resource:
+                  - !GetAtt DynamoDBSessionsTable.Arn
+                  - !Sub ${DynamoDBSessionsTable.Arn}/index/*
+                  - !GetAtt DynamoDBScenariosTable.Arn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt FeedbackQueue.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
+  UserManagerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-user-manager-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: UserManagerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+                Resource: !GetAtt DynamoDBUsersTable.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
+  HistoryManagerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-history-manager-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: HistoryManagerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query]
+                Resource:
+                  - !GetAtt DynamoDBFeedbacksTable.Arn
+                  - !Sub ${DynamoDBFeedbacksTable.Arn}/index/*
+                  - !GetAtt DynamoDBSessionsTable.Arn
+                  - !Sub ${DynamoDBSessionsTable.Arn}/index/*
+                  - !GetAtt DynamoDBChatlogsTable.Arn
+                  - !Sub ${DynamoDBChatlogsTable.Arn}/index/*
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
+  # ============================================================
+  # CloudWatch Log Groups
+  # ============================================================
+  LogGroupChatHandler:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/chat-handler-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  LogGroupFeedbackGenerator:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/feedback-generator-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  LogGroupSessionManager:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/session-manager-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  LogGroupUserManager:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/user-manager-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  LogGroupHistoryManager:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/history-manager-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  # ============================================================
+  # AWS Lambda Functions
+  # ============================================================
+
+  LambdaChatHandler:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupChatHandler
+    Properties:
+      FunctionName: !Sub chat-handler-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt ChatHandlerRole.Arn
+      MemorySize: 512
+      Timeout: 30
+      ReservedConcurrentExecutions: !If [IsStgOrProd, !FindInMap [EnvConfig, !Ref Env, ChatHandlerReservedConcurrency], !Ref AWS::NoValue]
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          BEDROCK_REGION: us-east-1
+          S3_BUCKET_AUDIO: !Ref AudioBucket
+          AUDIO_PRESIGNED_URL_EXPIRES: '3600'
+          SESSIONS_TABLE: !Ref DynamoDBSessionsTable
+          CHATLOGS_TABLE: !Ref DynamoDBChatlogsTable
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            // Placeholder: deploy actual code via CI/CD pipeline
+            return { statusCode: 200, body: JSON.stringify({ message: 'chat-handler placeholder' }) };
+          };
+
+  LambdaFeedbackGenerator:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupFeedbackGenerator
+    Properties:
+      FunctionName: !Sub feedback-generator-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt FeedbackGeneratorRole.Arn
+      MemorySize: 512
+      Timeout: 60
+      ReservedConcurrentExecutions: !If [IsStgOrProd, !FindInMap [EnvConfig, !Ref Env, FeedbackGeneratorReservedConcurrency], !Ref AWS::NoValue]
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          BEDROCK_REGION: us-east-1
+          CHATLOGS_TABLE: !Ref DynamoDBChatlogsTable
+          FEEDBACKS_TABLE: !Ref DynamoDBFeedbacksTable
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'feedback-generator placeholder' }) };
+          };
+
+  LambdaFeedbackGeneratorSQSTrigger:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt FeedbackQueue.Arn
+      FunctionName: !GetAtt LambdaFeedbackGenerator.Arn
+      BatchSize: 1
+      FunctionResponseTypes: [ReportBatchItemFailures]
+
+  LambdaSessionManager:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupSessionManager
+    Properties:
+      FunctionName: !Sub session-manager-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt SessionManagerRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          BEDROCK_REGION: us-east-1
+          S3_BUCKET_AUDIO: !Ref AudioBucket
+          AUDIO_PRESIGNED_URL_EXPIRES: '3600'
+          SESSIONS_TABLE: !Ref DynamoDBSessionsTable
+          SCENARIOS_TABLE: !Ref DynamoDBScenariosTable
+          FEEDBACK_QUEUE_URL: !Ref FeedbackQueue
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'session-manager placeholder' }) };
+          };
+
+  LambdaUserManager:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupUserManager
+    Properties:
+      FunctionName: !Sub user-manager-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt UserManagerRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          BEDROCK_REGION: us-east-1
+          S3_BUCKET_AUDIO: !Ref AudioBucket
+          AUDIO_PRESIGNED_URL_EXPIRES: '3600'
+          USERS_TABLE: !Ref DynamoDBUsersTable
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'user-manager placeholder' }) };
+          };
+
+  LambdaHistoryManager:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupHistoryManager
+    Properties:
+      FunctionName: !Sub history-manager-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt HistoryManagerRole.Arn
+      MemorySize: 256
+      Timeout: 10
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          BEDROCK_REGION: us-east-1
+          S3_BUCKET_AUDIO: !Ref AudioBucket
+          AUDIO_PRESIGNED_URL_EXPIRES: '3600'
+          FEEDBACKS_TABLE: !Ref DynamoDBFeedbacksTable
+          SESSIONS_TABLE: !Ref DynamoDBSessionsTable
+          CHATLOGS_TABLE: !Ref DynamoDBChatlogsTable
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'history-manager placeholder' }) };
+          };
+
+  # ============================================================
+  # Lambda Permissions for API Gateway
+  # ============================================================
+  LambdaPermissionChatHandler:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaChatHandler.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  LambdaPermissionSessionManager:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaSessionManager.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  LambdaPermissionUserManager:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaUserManager.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  LambdaPermissionHistoryManager:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaHistoryManager.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  # ============================================================
+  # Amazon API Gateway
+  # ============================================================
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub it-english-trainee-api-${Env}
+      Description: IT-English Trainee REST API
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: CognitoAuthorizer
+      RestApiId: !Ref RestApi
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !GetAtt CognitoUserPool.Arn
+
+  # /users
+  ResourceUsers:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: users
+
+  ResourceUsersMe:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceUsers
+      PathPart: me
+
+  MethodGetUsersMe:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceUsersMe
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaUserManager.Arn}/invocations
+
+  MethodPutUsersMe:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceUsersMe
+      HttpMethod: PUT
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaUserManager.Arn}/invocations
+
+  MethodOptionsUsersMe:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceUsersMe
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,PUT,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ResourceUsersMeDashboard:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceUsersMe
+      PathPart: dashboard
+
+  MethodGetUsersMeDashboard:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceUsersMeDashboard
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaHistoryManager.Arn}/invocations
+
+  ResourceUsersMeHistory:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceUsersMe
+      PathPart: history
+
+  MethodGetUsersMeHistory:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceUsersMeHistory
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaHistoryManager.Arn}/invocations
+
+  # /scenarios
+  ResourceScenarios:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: scenarios
+
+  MethodGetScenarios:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceScenarios
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaSessionManager.Arn}/invocations
+
+  # /sessions
+  ResourceSessions:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: sessions
+
+  MethodPostSessions:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceSessions
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaSessionManager.Arn}/invocations
+
+  ResourceSessionsSessionId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceSessions
+      PathPart: '{sessionId}'
+
+  ResourceSessionsChat:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceSessionsSessionId
+      PathPart: chat
+
+  MethodPostSessionsChat:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceSessionsChat
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaChatHandler.Arn}/invocations
+
+  ResourceSessionsEnd:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceSessionsSessionId
+      PathPart: end
+
+  MethodPostSessionsEnd:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceSessionsEnd
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaSessionManager.Arn}/invocations
+
+  # /feedbacks
+  ResourceFeedbacks:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: feedbacks
+
+  ResourceFeedbacksFeedbackId:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ResourceFeedbacks
+      PathPart: '{feedbackId}'
+
+  MethodGetFeedbacksFeedbackId:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceFeedbacksFeedbackId
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaHistoryManager.Arn}/invocations
+
+  # Deployment & Stage
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - MethodGetUsersMe
+      - MethodPutUsersMe
+      - MethodGetUsersMeDashboard
+      - MethodGetUsersMeHistory
+      - MethodGetScenarios
+      - MethodPostSessions
+      - MethodPostSessionsChat
+      - MethodPostSessionsEnd
+      - MethodGetFeedbacksFeedbackId
+    Properties:
+      RestApiId: !Ref RestApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref Env
+      TracingEnabled: !If [IsStgOrProd, true, false]
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingRateLimit: 100
+          ThrottlingBurstLimit: 200
+        - ResourcePath: '/sessions/{sessionId}/chat'
+          HttpMethod: POST
+          ThrottlingRateLimit: 10
+          ThrottlingBurstLimit: 20
+
+  # ============================================================
+  # CloudWatch Alarms
+  # ============================================================
+  AlarmChatHandlerErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub it-english-chat-handler-errors-${Env}
+      AlarmDescription: chat-handler Lambda error rate exceeded threshold
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaChatHandler
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmSnsTopic]
+
+  AlarmChatHandlerDuration:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub it-english-chat-handler-duration-${Env}
+      AlarmDescription: chat-handler Lambda p99 duration exceeded 25 seconds
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaChatHandler
+      ExtendedStatistic: p99
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 25000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmSnsTopic]
+
+  AlarmApiGateway5xx:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub it-english-apigw-5xx-${Env}
+      AlarmDescription: API Gateway 5xx errors exceeded 10 per minute
+      Namespace: AWS/ApiGateway
+      MetricName: 5XXError
+      Dimensions:
+        - Name: ApiName
+          Value: !Sub it-english-trainee-api-${Env}
+        - Name: Stage
+          Value: !Ref Env
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmSnsTopic]
+
+  AlarmDLQMessages:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub it-english-dlq-messages-${Env}
+      AlarmDescription: Messages detected in Feedback DLQ
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt FeedbackDLQ.QueueName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmSnsTopic]
+
+  AlarmDynamoDBReadThrottle:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub it-english-dynamodb-read-throttle-${Env}
+      AlarmDescription: DynamoDB read throttle events detected
+      Namespace: AWS/DynamoDB
+      MetricName: ReadThrottleEvents
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmSnsTopic]
+
+  # ============================================================
+  # CloudWatch Dashboard
+  # ============================================================
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub it-english-trainee-${Env}
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda Invocations (per hour)",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda","Invocations","FunctionName","chat-handler-${Env}"],
+                  ["AWS/Lambda","Invocations","FunctionName","feedback-generator-${Env}"],
+                  ["AWS/Lambda","Invocations","FunctionName","session-manager-${Env}"],
+                  ["AWS/Lambda","Invocations","FunctionName","user-manager-${Env}"],
+                  ["AWS/Lambda","Invocations","FunctionName","history-manager-${Env}"]
+                ],
+                "period": 3600, "stat": "Sum", "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Lambda Errors",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda","Errors","FunctionName","chat-handler-${Env}"],
+                  ["AWS/Lambda","Errors","FunctionName","feedback-generator-${Env}"],
+                  ["AWS/Lambda","Errors","FunctionName","session-manager-${Env}"],
+                  ["AWS/Lambda","Errors","FunctionName","user-manager-${Env}"],
+                  ["AWS/Lambda","Errors","FunctionName","history-manager-${Env}"]
+                ],
+                "period": 300, "stat": "Sum", "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "API Gateway Latency (P50/P90/P99)",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApiGateway","Latency","ApiName","it-english-trainee-api-${Env}",{"stat":"p50"}],
+                  ["AWS/ApiGateway","Latency","ApiName","it-english-trainee-api-${Env}",{"stat":"p90"}],
+                  ["AWS/ApiGateway","Latency","ApiName","it-english-trainee-api-${Env}",{"stat":"p99"}]
+                ],
+                "period": 300, "stat": "p90", "view": "timeSeries"
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "DynamoDB Consumed Capacity",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/DynamoDB","ConsumedReadCapacityUnits","TableName","it-english-sessions-${Env}"],
+                  ["AWS/DynamoDB","ConsumedWriteCapacityUnits","TableName","it-english-sessions-${Env}"],
+                  ["AWS/DynamoDB","ConsumedReadCapacityUnits","TableName","it-english-chatlogs-${Env}"],
+                  ["AWS/DynamoDB","ConsumedWriteCapacityUnits","TableName","it-english-chatlogs-${Env}"]
+                ],
+                "period": 300, "stat": "Sum", "view": "timeSeries"
+              }
+            }
+          ]
+        }
+
+
+  # ============================================================
+  # S3 Bucket for CI/CD Artifacts (Lambda zip files)
+  # ============================================================
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub it-english-trainee-artifacts-${Env}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-artifacts
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+
+  # ============================================================
+  # S3 Bucket for Frontend Hosting
+  # ============================================================
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub it-english-trainee-frontend-${Env}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
+  # ============================================================
+  # CloudFront Distribution for Frontend
+  # ============================================================
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub it-english-frontend-oac-${Env}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub IT-English Trainee Frontend (${Env})
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: FrontendS3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+
+  # ============================================================
+  # IAM Role for CodeBuild
+  # ============================================================
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-codebuild-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # CloudWatch Logs
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              # S3 Artifact Bucket
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub ${ArtifactBucket.Arn}/*
+              # S3 Frontend Bucket (deploy built assets)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt FrontendBucket.Arn
+                  - !Sub ${FrontendBucket.Arn}/*
+              # Lambda (update function code)
+              - Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionCode
+                  - lambda:GetFunction
+                  - lambda:PublishVersion
+                Resource:
+                  - !GetAtt LambdaChatHandler.Arn
+                  - !GetAtt LambdaFeedbackGenerator.Arn
+                  - !GetAtt LambdaSessionManager.Arn
+                  - !GetAtt LambdaUserManager.Arn
+                  - !GetAtt LambdaHistoryManager.Arn
+              # CloudFront (invalidation after frontend deploy)
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
+  # ============================================================
+  # CodeBuild: Backend (Unit Test + Bundle + Lambda Deploy)
+  # ============================================================
+  BackendCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub it-english-backend-build-${Env}
+      Description: Run unit tests, bundle Lambda functions, and deploy to AWS Lambda
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: ENV
+            Value: !Ref Env
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactBucket
+          - Name: CHAT_HANDLER_FUNCTION
+            Value: !Ref LambdaChatHandler
+          - Name: FEEDBACK_GENERATOR_FUNCTION
+            Value: !Ref LambdaFeedbackGenerator
+          - Name: SESSION_MANAGER_FUNCTION
+            Value: !Ref LambdaSessionManager
+          - Name: USER_MANAGER_FUNCTION
+            Value: !Ref LambdaUserManager
+          - Name: HISTORY_MANAGER_FUNCTION
+            Value: !Ref LambdaHistoryManager
+      Source:
+        Type: GITHUB
+        Location: https://github.com/pci-ishiyama/llm_study_english_training
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 20
+              commands:
+                - cd src/backend
+                - npm ci
+            pre_build:
+              commands:
+                - echo "Running unit tests..."
+                - npm run test -- --coverage --ci
+            build:
+              commands:
+                - echo "Bundling Lambda functions..."
+                - npm run build
+                - |
+                  for FUNC in chat-handler feedback-generator session-manager user-manager history-manager; do
+                    zip -j dist/${FUNC}.zip dist/functions/${FUNC}/index.js
+                    aws s3 cp dist/${FUNC}.zip s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip
+                  done
+            post_build:
+              commands:
+                - echo "Deploying Lambda functions..."
+                - aws lambda update-function-code --function-name ${CHAT_HANDLER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/chat-handler.zip
+                - aws lambda update-function-code --function-name ${FEEDBACK_GENERATOR_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/feedback-generator.zip
+                - aws lambda update-function-code --function-name ${SESSION_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/session-manager.zip
+                - aws lambda update-function-code --function-name ${USER_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/user-manager.zip
+                - aws lambda update-function-code --function-name ${HISTORY_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip
+          reports:
+            jest-coverage:
+              files:
+                - src/backend/coverage/clover.xml
+              file-format: CLOVERXML
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub /aws/codebuild/it-english-backend-${Env}
+
+  # ============================================================
+  # CodeBuild: Frontend (Unit Test + Build + S3 Deploy)
+  # ============================================================
+  FrontendCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub it-english-frontend-build-${Env}
+      Description: Run unit tests, build React app, deploy to S3, and invalidate CloudFront
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: ENV
+            Value: !Ref Env
+          - Name: FRONTEND_BUCKET
+            Value: !Ref FrontendBucket
+          - Name: CLOUDFRONT_DISTRIBUTION_ID
+            Value: !Ref CloudFrontDistribution
+          - Name: VITE_API_ENDPOINT
+            Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Env}
+          - Name: VITE_COGNITO_USER_POOL_ID
+            Value: !Ref CognitoUserPool
+          - Name: VITE_COGNITO_CLIENT_ID
+            Value: !Ref CognitoUserPoolClient
+          - Name: VITE_AWS_REGION
+            Value: !Ref AWS::Region
+      Source:
+        Type: GITHUB
+        Location: https://github.com/pci-ishiyama/llm_study_english_training
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 20
+              commands:
+                - cd src/frontend
+                - npm ci
+            pre_build:
+              commands:
+                - echo "Running frontend unit tests..."
+                - npm run test -- --run --coverage
+            build:
+              commands:
+                - echo "Building frontend..."
+                - npm run build
+            post_build:
+              commands:
+                - echo "Deploying to S3..."
+                - aws s3 sync dist/ s3://${FRONTEND_BUCKET}/ --delete
+                - echo "Invalidating CloudFront cache..."
+                - aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
+          reports:
+            vitest-coverage:
+              files:
+                - src/frontend/coverage/clover.xml
+              file-format: CLOVERXML
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub /aws/codebuild/it-english-frontend-${Env}
+
+  # ============================================================
+  # GitHub Actions OIDC (Keyless Authentication)
+  # ============================================================
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-github-actions-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: repo:pci-ishiyama/llm_study_english_training:*
+      Policies:
+        - PolicyName: GitHubActionsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # CodeBuild trigger
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StopBuild
+                Resource:
+                  - !GetAtt BackendCodeBuildProject.Arn
+                  - !GetAtt FrontendCodeBuildProject.Arn
+              # CloudFormation (stack update)
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/it-english-trainee-*/*
+# ==============================================================================
+# Outputs
+# ==============================================================================
+Outputs:
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub it-english-cognito-user-pool-id-${Env}
+
+  CognitoUserPoolClientId:
+    Description: Cognito App Client ID
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub it-english-cognito-client-id-${Env}
+
+  ApiGatewayEndpoint:
+    Description: API Gateway base URL
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Env}
+    Export:
+      Name: !Sub it-english-api-endpoint-${Env}
+
+  AudioBucketName:
+    Description: S3 Audio Bucket Name
+    Value: !Ref AudioBucket
+    Export:
+      Name: !Sub it-english-audio-bucket-${Env}
+
+  FeedbackQueueUrl:
+    Description: SQS Feedback Queue URL
+    Value: !Ref FeedbackQueue
+    Export:
+      Name: !Sub it-english-feedback-queue-url-${Env}
+
+  FeedbackDLQUrl:
+    Description: SQS Feedback Dead Letter Queue URL
+    Value: !Ref FeedbackDLQ
+    Export:
+      Name: !Sub it-english-feedback-dlq-url-${Env}
+
+  UsersTableName:
+    Description: DynamoDB Users Table Name
+    Value: !Ref DynamoDBUsersTable
+
+  SessionsTableName:
+    Description: DynamoDB Sessions Table Name
+    Value: !Ref DynamoDBSessionsTable
+
+  ChatlogsTableName:
+    Description: DynamoDB ChatLogs Table Name
+    Value: !Ref DynamoDBChatlogsTable
+
+  FeedbacksTableName:
+    Description: DynamoDB Feedbacks Table Name
+    Value: !Ref DynamoDBFeedbacksTable
+
+  ArtifactBucketName:
+    Description: S3 Artifact Bucket Name (for CI/CD Lambda zip files)
+    Value: !Ref ArtifactBucket
+    Export:
+      Name: !Sub it-english-artifact-bucket-${Env}
+
+  FrontendBucketName:
+    Description: S3 Frontend Hosting Bucket Name
+    Value: !Ref FrontendBucket
+    Export:
+      Name: !Sub it-english-frontend-bucket-${Env}
+
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub it-english-cloudfront-id-${Env}
+
+  CloudFrontDomainName:
+    Description: CloudFront Distribution Domain Name (Frontend URL)
+    Value: !Sub https://${CloudFrontDistribution.DomainName}
+    Export:
+      Name: !Sub it-english-frontend-url-${Env}
+
+  BackendCodeBuildProjectName:
+    Description: CodeBuild Project Name for Backend
+    Value: !Ref BackendCodeBuildProject
+    Export:
+      Name: !Sub it-english-backend-codebuild-${Env}
+
+  FrontendCodeBuildProjectName:
+    Description: CodeBuild Project Name for Frontend
+    Value: !Ref FrontendCodeBuildProject
+    Export:
+      Name: !Sub it-english-frontend-codebuild-${Env}
+
+  GitHubActionsRoleArn:
+    Description: IAM Role ARN for GitHub Actions (set as AWS_ROLE_ARN secret in GitHub)
+    Value: !GetAtt GitHubActionsRole.Arn
+    Export:
+      Name: !Sub it-english-github-actions-role-arn-${Env}
