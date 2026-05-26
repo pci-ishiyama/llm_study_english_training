@@ -24,31 +24,5 @@ phases:
     commands:
       - echo "Bundling Lambda functions..."
       - npm run bundle
-      - echo "Packaging Lambda zip files..."
-      - |
-        for func in chat-handler feedback-generator session-manager user-manager history-manager; do
-          zip -j dist/${func}.zip dist/${func}/index.js
-          echo "Packaged: ${func}.zip"
-        done
-      - echo "Uploading artifacts to S3..."
-      - |
-        for func in chat-handler feedback-generator session-manager user-manager history-manager; do
-          aws s3 cp dist/${func}.zip s3://${ARTIFACT_BUCKET}/lambda/${func}.zip
-          echo "Uploaded: ${func}.zip"
-        done
+      - echo "Backend CI build completed successfully."
 
-  post_build:
-    commands:
-      - echo "Updating Lambda functions..."
-      - aws lambda update-function-code --function-name chat-handler-${ENV} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/chat-handler.zip --region ap-northeast-1
-      - aws lambda update-function-code --function-name feedback-generator-${ENV} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/feedback-generator.zip --region ap-northeast-1
-      - aws lambda update-function-code --function-name session-manager-${ENV} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/session-manager.zip --region ap-northeast-1
-      - aws lambda update-function-code --function-name user-manager-${ENV} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/user-manager.zip --region ap-northeast-1
-      - aws lambda update-function-code --function-name history-manager-${ENV} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip --region ap-northeast-1
-      - echo "All Lambda functions updated successfully!"
-
-reports:
-  jest-coverage:
-    files:
-      - "src/backend/coverage/clover.xml"
-    file-format: CLOVERXML
