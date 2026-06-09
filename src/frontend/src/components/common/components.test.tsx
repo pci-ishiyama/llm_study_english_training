@@ -8,7 +8,7 @@ import PrivateRoute from '@components/common/PrivateRoute';
 
 const mockUseAuth = vi.fn();
 vi.mock('@hooks/useAuth', () => ({
-  useAuth: () => mockUseAuth(),
+  useAuth: (): unknown => mockUseAuth(),
 }));
 
 describe('LoadingSpinner', () => {

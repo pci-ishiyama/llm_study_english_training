@@ -1,21 +1,55 @@
 ﻿import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useAuth } from '@hooks/useAuth';
 
-const mockGetCurrentUser = vi.fn();
-const mockFetchAuthSession = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockSignUp = vi.fn();
-const mockConfirmSignUp = vi.fn();
+import { useAuth, type AuthUser } from '@hooks/useAuth';
+
+interface MockAuthSession {
+  tokens?: {
+    idToken?: {
+      payload?: Record<string, unknown>;
+      toString: () => string;
+    };
+  };
+}
+
+
+
+
+
+
+
+const notAuthenticatedError = new Error('Not authenticated');
+const mockGetCurrentUser = vi.fn<() => Promise<AuthUser>>(() => Promise.reject(notAuthenticatedError));
+const mockFetchAuthSession = vi.fn<() => Promise<MockAuthSession>>(() => Promise.reject(notAuthenticatedError));
+const mockSignIn = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
+const mockSignOut = vi.fn<() => Promise<unknown>>(() => Promise.resolve({}));
+const mockSignUp = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
+const mockConfirmSignUp = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
 
 vi.mock('aws-amplify/auth', () => ({
-  getCurrentUser: () => mockGetCurrentUser(),
-  fetchAuthSession: () => mockFetchAuthSession(),
-  signIn: (input: unknown) => mockSignIn(input),
-  signOut: () => mockSignOut(),
-  signUp: (input: unknown) => mockSignUp(input),
-  confirmSignUp: (input: unknown) => mockConfirmSignUp(input),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  getCurrentUser: (): Promise<AuthUser> => mockGetCurrentUser(),
+  fetchAuthSession: (): Promise<MockAuthSession> => mockFetchAuthSession(),
+  signIn: (input: unknown): Promise<unknown> => mockSignIn(input),
+  signOut: (): Promise<unknown> => mockSignOut(),
+  signUp: (input: unknown): Promise<unknown> => mockSignUp(input),
+  confirmSignUp: (input: unknown): Promise<unknown> => mockConfirmSignUp(input),
 }));
 
 describe('useAuth', () => {
@@ -32,7 +66,7 @@ describe('useAuth', () => {
   });
 
   it('initializes with authenticated state when session exists', async () => {
-    mockGetCurrentUser.mockResolvedValue({ userId: 'u1' });
+    mockGetCurrentUser.mockResolvedValue({ userId: 'u1', email: 'test@example.com' });
     mockFetchAuthSession.mockResolvedValue({
       tokens: {
         idToken: {
@@ -50,7 +84,7 @@ describe('useAuth', () => {
   it('login succeeds and sets user', async () => {
     mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
     mockSignIn.mockResolvedValue({});
-    mockGetCurrentUser.mockResolvedValue({ userId: 'u2' });
+    mockGetCurrentUser.mockResolvedValue({ userId: 'u2', email: 'login@example.com' });
     mockFetchAuthSession.mockResolvedValue({
       tokens: {
         idToken: {
@@ -83,7 +117,7 @@ describe('useAuth', () => {
   });
 
   it('logout clears user', async () => {
-    mockGetCurrentUser.mockResolvedValue({ userId: 'u1' });
+    mockGetCurrentUser.mockResolvedValue({ userId: 'u1', email: 'test@example.com' });
     mockFetchAuthSession.mockResolvedValue({
       tokens: {
         idToken: {

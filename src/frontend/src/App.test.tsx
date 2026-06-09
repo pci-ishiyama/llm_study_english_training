@@ -1,4 +1,4 @@
-﻿import { render, screen } from '@testing-library/react';
+﻿import { render } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from './App';
 
@@ -11,26 +11,26 @@ vi.mock('aws-amplify/auth', () => ({
   confirmSignUp: vi.fn(),
 }));
 
-vi.mock('@pages/LoginPage', () => ({
-  default: () => <div>Login Page</div>,
+vi.mock('@pages/LoginPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Login Page</div>,
 }));
-vi.mock('@pages/HomePage', () => ({
-  default: () => <div>Home Page</div>,
+vi.mock('@pages/HomePage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Home Page</div>,
 }));
-vi.mock('@pages/SessionNewPage', () => ({
-  default: () => <div>Session New Page</div>,
+vi.mock('@pages/SessionNewPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Session New Page</div>,
 }));
-vi.mock('@pages/ChatPage', () => ({
-  default: () => <div>Chat Page</div>,
+vi.mock('@pages/ChatPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Chat Page</div>,
 }));
-vi.mock('@pages/FeedbackPage', () => ({
-  default: () => <div>Feedback Page</div>,
+vi.mock('@pages/FeedbackPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Feedback Page</div>,
 }));
-vi.mock('@pages/HistoryPage', () => ({
-  default: () => <div>History Page</div>,
+vi.mock('@pages/HistoryPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>History Page</div>,
 }));
-vi.mock('@pages/SettingsPage', () => ({
-  default: () => <div>Settings Page</div>,
+vi.mock('@pages/SettingsPage', (): { default: () => JSX.Element } => ({
+  default: (): JSX.Element => <div>Settings Page</div>,
 }));
 
 describe('App', () => {
@@ -38,7 +38,7 @@ describe('App', () => {
     vi.clearAllMocks();
   });
 
-  it('renders without crashing', async () => {
+  it('renders without crashing', () => {
     render(<App />);
     expect(document.body).toBeTruthy();
   });

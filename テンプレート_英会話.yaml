@@ -1386,7 +1386,7 @@ Resources:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Sub it-english-frontend-build-${Env}
-      Description: Run unit tests, build React app, deploy to S3, and invalidate CloudFront
+      Description: Run lint, unit tests, and build for the React frontend
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: NO_ARTIFACTS
@@ -1397,10 +1397,6 @@ Resources:
         EnvironmentVariables:
           - Name: ENV
             Value: !Ref Env
-          - Name: FRONTEND_BUCKET
-            Value: !Ref FrontendBucket
-          - Name: CLOUDFRONT_DISTRIBUTION_ID
-            Value: !Ref CloudFrontDistribution
           - Name: VITE_API_ENDPOINT
             Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${Env}
           - Name: VITE_COGNITO_USER_POOL_ID
@@ -1423,23 +1419,23 @@ Resources:
                 - npm ci
             pre_build:
               commands:
+                - echo "Running lint..."
+                - npm run lint
                 - echo "Running frontend unit tests..."
                 - npm run test -- --run --coverage
+                - echo "Setting environment variables for build..."
+                - |
+                  cat > .env.production << EOF
+                  VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID}
+                  VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID}
+                  VITE_API_ENDPOINT=${VITE_API_ENDPOINT}
+                  VITE_AWS_REGION=${VITE_AWS_REGION}
+                  EOF
             build:
               commands:
                 - echo "Building frontend..."
                 - npm run build
-            post_build:
-              commands:
-                - echo "Deploying to S3..."
-                - aws s3 sync dist/ s3://${FRONTEND_BUCKET}/ --delete
-                - echo "Invalidating CloudFront cache..."
-                - aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
-          reports:
-            vitest-coverage:
-              files:
-                - src/frontend/coverage/clover.xml
-              file-format: CLOVERXML
+                - echo "Frontend CI build completed successfully."
       LogsConfig:
         CloudWatchLogs:
           Status: ENABLED

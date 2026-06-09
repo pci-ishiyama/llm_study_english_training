@@ -6,24 +6,39 @@ import LoginPage from '@pages/LoginPage';
 const mockLogin = vi.fn();
 const mockClearError = vi.fn();
 const mockNavigate = vi.fn();
-
-vi.mock('@hooks/useAuth', () => ({
-  useAuth: () => ({
-    login: mockLogin,
-    isLoading: false,
-    error: null,
-    clearError: mockClearError,
-  }),
+const mockUseAuth = vi.fn<() => {
+  login: typeof mockLogin;
+  isLoading: boolean;
+  error: string | null;
+  clearError: typeof mockClearError;
+}>(() => ({
+  login: mockLogin,
+  isLoading: false,
+  error: null,
+  clearError: mockClearError,
 }));
 
-vi.mock('react-router-dom', async () => {
+vi.mock('@hooks/useAuth', (): {
+  useAuth: typeof mockUseAuth;
+} => ({
+  useAuth: mockUseAuth,
+}));
+
+vi.mock('react-router-dom', async (): Promise<typeof import('react-router-dom')> => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
-  return { ...actual, useNavigate: () => mockNavigate };
+
+  return { ...actual, useNavigate: (): typeof mockNavigate => mockNavigate };
 });
 
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAuth.mockReturnValue({
+      login: mockLogin,
+      isLoading: false,
+      error: null,
+      clearError: mockClearError,
+    });
   });
 
   it('renders login form', () => {
@@ -48,13 +63,14 @@ describe('LoginPage', () => {
   });
 
   it('shows error message when error exists', () => {
-    vi.mock('@hooks/useAuth', () => ({
-      useAuth: () => ({
-        login: mockLogin,
-        isLoading: false,
-        error: 'Invalid credentials',
-        clearError: mockClearError,
-      }),
-    }));
+    mockUseAuth.mockReturnValue({
+      login: mockLogin,
+      isLoading: false,
+      error: 'Invalid credentials',
+      clearError: mockClearError,
+    });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    expect(screen.getByText('Invalid credentials')).toBeTruthy();
   });
 });

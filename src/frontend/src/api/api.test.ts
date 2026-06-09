@@ -1,5 +1,4 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
 
 vi.mock('axios', async () => {
   const actual = await vi.importActual<typeof import('axios')>('axios');
