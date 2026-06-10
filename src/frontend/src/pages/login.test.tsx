@@ -6,16 +6,18 @@ import LoginPage from '@pages/LoginPage';
 const mockLogin = vi.fn();
 const mockClearError = vi.fn();
 const mockNavigate = vi.fn();
-const mockUseAuth = vi.fn<() => {
-  login: typeof mockLogin;
-  isLoading: boolean;
-  error: string | null;
-  clearError: typeof mockClearError;
-}>(() => ({
-  login: mockLogin,
-  isLoading: false,
-  error: null,
-  clearError: mockClearError,
+const { mockUseAuth } = vi.hoisted(() => ({
+  mockUseAuth: vi.fn<() => {
+    login: typeof mockLogin;
+    isLoading: boolean;
+    error: string | null;
+    clearError: typeof mockClearError;
+  }>(() => ({
+    login: mockLogin,
+    isLoading: false,
+    error: null,
+    clearError: mockClearError,
+  })),
 }));
 
 vi.mock('@hooks/useAuth', (): {
