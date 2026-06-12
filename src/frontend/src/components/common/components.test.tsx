@@ -1,6 +1,6 @@
-﻿import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import LoadingSpinner from '@components/common/LoadingSpinner';
 import ErrorMessage from '@components/common/ErrorMessage';
 import Header from '@components/common/Header';
@@ -12,6 +12,9 @@ vi.mock('@hooks/useAuth', () => ({
 }));
 
 describe('LoadingSpinner', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
   it('renders with default props', () => {
     render(<LoadingSpinner />);
     expect(screen.getByRole('status')).toBeTruthy();
@@ -40,6 +43,9 @@ describe('LoadingSpinner', () => {
 });
 
 describe('ErrorMessage', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
   it('renders error message', () => {
     render(<ErrorMessage message="Something went wrong" />);
     expect(screen.getByText('Something went wrong')).toBeTruthy();
@@ -73,6 +79,9 @@ describe('ErrorMessage', () => {
 });
 
 describe('Header', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
   it('renders logo when authenticated', () => {
     mockUseAuth.mockReturnValue({
       isAuthenticated: true,
@@ -91,20 +100,35 @@ describe('Header', () => {
     expect(screen.queryByText('Logout')).toBeNull();
   });
 
-  it('calls logout on logout click', () => {
+  it('calls logout on logout click', async () => {
     const mockLogout = vi.fn().mockResolvedValue(undefined);
     mockUseAuth.mockReturnValue({
       isAuthenticated: true,
       user: { email: 'test@example.com' },
       logout: mockLogout,
     });
-    render(<MemoryRouter><Header /></MemoryRouter>);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<Header />} />
+          <Route path="/login" element={<div>Login Page</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
     fireEvent.click(screen.getByText('Logout'));
-    expect(mockLogout).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(mockLogout).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Login Page')).toBeTruthy();
+    });
   });
 });
 
 describe('PrivateRoute', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReset();
+  });
   it('shows loading spinner when isLoading', () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: false, isLoading: true });
     render(<MemoryRouter><PrivateRoute><div>Protected</div></PrivateRoute></MemoryRouter>);
@@ -121,9 +145,16 @@ describe('PrivateRoute', () => {
     mockUseAuth.mockReturnValue({ isAuthenticated: false, isLoading: false });
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
-        <PrivateRoute><div>Protected</div></PrivateRoute>
+        <Routes>
+          <Route
+            path="/dashboard"
+            element={<PrivateRoute><div>Protected</div></PrivateRoute>}
+          />
+          <Route path="/login" element={<div>Login Page</div>} />
+        </Routes>
       </MemoryRouter>
     );
     expect(screen.queryByText('Protected')).toBeNull();
+    expect(screen.getByText('Login Page')).toBeTruthy();
   });
 });

@@ -1,4 +1,5 @@
-﻿import { describe, it, expect } from 'vitest';
+﻿
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { store } from '@store/index';
 import {
   setUser,
@@ -6,6 +7,7 @@ import {
   clearAuth,
   setAuthError,
   clearAuthError,
+  fetchCurrentUser,
 } from '@store/authSlice';
 import {
   startSessionPending,
@@ -21,7 +23,20 @@ import {
   clearSessionError,
 } from '@store/sessionSlice';
 
+vi.mock('aws-amplify/auth', () => ({
+  getCurrentUser: vi.fn(),
+  fetchAuthSession: vi.fn(),
+}));
+
 describe('authSlice', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store.dispatch(clearAuth());
+    store.dispatch(clearAuthError());
+    store.dispatch(clearSession());
+    store.dispatch(clearSessionError());
+  });
+
   it('initial state is correct', () => {
     const state = store.getState().auth;
     expect(state.isAuthenticated).toBe(false);
@@ -67,9 +82,59 @@ describe('authSlice', () => {
     expect(state.userId).toBeNull();
     expect(state.user).toBeNull();
   });
+
+  it('fetchCurrentUser fulfilled sets authenticated user', async () => {
+    const authModule = await import('aws-amplify/auth');
+    vi.mocked(authModule.getCurrentUser).mockResolvedValue({
+      userId: 'u1',
+      username: 'test-user',
+      signInDetails: undefined,
+    });
+    vi.mocked(authModule.fetchAuthSession).mockResolvedValue({
+      tokens: {
+        accessToken: {
+          payload: {},
+          toString: () => 'mock-access-token',
+        },
+        idToken: {
+          payload: { email: 'test@example.com' },
+          toString: () => 'mock-token',
+        },
+      },
+      credentials: undefined,
+      identityId: undefined,
+      userSub: undefined,
+    });
+
+    await store.dispatch(fetchCurrentUser());
+
+    const state = store.getState().auth;
+    expect(state.userId).toBe('u1');
+    expect(state.email).toBe('test@example.com');
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isLoading).toBe(false);
+    expect(state.error).toBeNull();
+  });
+
+  it('fetchCurrentUser rejected keeps unauthenticated state', async () => {
+    const authModule = await import('aws-amplify/auth');
+    vi.mocked(authModule.getCurrentUser).mockRejectedValue(new Error('unauthorized'));
+
+    await store.dispatch(fetchCurrentUser());
+
+    const state = store.getState().auth;
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.isLoading).toBe(false);
+  });
 });
 
 describe('sessionSlice', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store.dispatch(clearSession());
+    store.dispatch(clearSessionError());
+  });
+
   const mockScenario = {
     scenarioId: 's1',
     title: 'Test Scenario',
@@ -150,9 +215,27 @@ describe('sessionSlice', () => {
     expect(state.error).toBe('Network error');
   });
 
+  it('sendChatRejected removes the last chat log and sets error', () => {
+    store.dispatch(startSessionFulfilled({ response: mockStartResponse, scenario: mockScenario }));
+
+    store.dispatch(sendChatRejected('Network error'));
+
+    const state = store.getState().session;
+    expect(state.chatLogs).toHaveLength(0);
+    expect(state.error).toBe('Network error');
+    expect(state.isSending).toBe(false);
+  });
+
   it('endSessionFulfilled sets status to completed', () => {
+    store.dispatch(startSessionFulfilled({ response: mockStartResponse, scenario: mockScenario }));
     store.dispatch(endSessionFulfilled());
     expect(store.getState().session.currentSession?.status).toBe('completed');
+  });
+
+  it('endSessionFulfilled does nothing when there is no current session', () => {
+    store.dispatch(clearSession());
+    store.dispatch(endSessionFulfilled());
+    expect(store.getState().session.currentSession).toBeNull();
   });
 
   it('setAudioPlaying toggles audio state', () => {
