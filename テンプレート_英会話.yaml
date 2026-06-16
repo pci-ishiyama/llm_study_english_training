@@ -1314,6 +1314,15 @@ Resources:
                   - codestar-connections:GetConnection
                   - codestar-connections:UseConnection
                 Resource: arn:aws:codeconnections:ap-northeast-1:442590065607:connection/dae3c8c9-d786-4c15-b238-3f00413cd48e
+              # CodeBuild Report Groups (for Jest coverage reports)
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource: !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/*
 
   # ============================================================
   # CodeBuild: Backend (Unit Test + Bundle + Lambda Deploy)
@@ -1360,14 +1369,14 @@ Resources:
             pre_build:
               commands:
                 - echo "Running unit tests..."
-                - npm run test -- --coverage --ci
+                - npm run test:unit -- --ci
             build:
               commands:
                 - echo "Bundling Lambda functions..."
-                - npm run build
+                - npm run bundle
                 - |
                   for FUNC in chat-handler feedback-generator session-manager user-manager history-manager; do
-                    zip -j dist/${FUNC}.zip dist/functions/${FUNC}/index.js
+                    zip -j dist/${FUNC}.zip dist/${FUNC}/index.js
                     aws s3 cp dist/${FUNC}.zip s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip
                   done
             post_build:
