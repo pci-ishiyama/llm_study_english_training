@@ -1,0 +1,29 @@
+{
+  "scenarioId": {
+    "S": "SCN-001"
+  },
+  "title": {
+    "S": "Tech Interview Practice"
+  },
+  "description": {
+    "S": "Practice English technical interviews covering algorithms, system design, and engineering experience."
+  },
+  "category": {
+    "S": "interview"
+  },
+  "difficulty": {
+    "S": "advanced"
+  },
+  "isActive": {
+    "BOOL": true
+  },
+  "systemPrompt": {
+    "S": "You are an experienced technical interviewer at a top tech company. Conduct a realistic technical interview in English. Ask about algorithms, system design, and past experience. Correct grammar politely. Start with: Hello! Could you tell me about yourself and your experience as a software engineer?"
+  },
+  "createdAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  },
+  "updatedAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  }
+}

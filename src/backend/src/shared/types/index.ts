@@ -24,11 +24,11 @@ export const createResponse = (
 
 // ── DynamoDB テーブル名 ─────────────────────────────────────────
 export const TABLE_NAMES = {
-  USERS: `it-english-trainee-users-${process.env.ENV ?? 'dev'}`,
-  SCENARIOS: `it-english-trainee-scenarios-${process.env.ENV ?? 'dev'}`,
-  SESSIONS: `it-english-trainee-sessions-${process.env.ENV ?? 'dev'}`,
-  CHAT_LOGS: `it-english-trainee-chat-logs-${process.env.ENV ?? 'dev'}`,
-  FEEDBACKS: `it-english-trainee-feedbacks-${process.env.ENV ?? 'dev'}`,
+  USERS: `it-english-users-${process.env.ENV ?? 'dev'}`,
+  SCENARIOS: `it-english-scenarios-${process.env.ENV ?? 'dev'}`,
+  SESSIONS: `it-english-sessions-${process.env.ENV ?? 'dev'}`,
+  CHAT_LOGS: `it-english-chatlogs-${process.env.ENV ?? 'dev'}`,
+  FEEDBACKS: `it-english-feedbacks-${process.env.ENV ?? 'dev'}`,
 } as const;
 
 // ── エラー型 ────────────────────────────────────────────────────

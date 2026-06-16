@@ -1,0 +1,29 @@
+{
+  "scenarioId": {
+    "S": "SCN-004"
+  },
+  "title": {
+    "S": "Client Requirements Meeting"
+  },
+  "description": {
+    "S": "Practice requirements gathering meetings with English-speaking clients."
+  },
+  "category": {
+    "S": "meeting"
+  },
+  "difficulty": {
+    "S": "intermediate"
+  },
+  "isActive": {
+    "BOOL": true
+  },
+  "systemPrompt": {
+    "S": "You are a client with software requirements. Conduct a requirements gathering meeting in English. Ask clarifying questions about the project. Use business and technical terminology. Correct grammar politely."
+  },
+  "createdAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  },
+  "updatedAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  }
+}

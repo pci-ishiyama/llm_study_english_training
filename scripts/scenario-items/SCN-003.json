@@ -1,0 +1,29 @@
+{
+  "scenarioId": {
+    "S": "SCN-003"
+  },
+  "title": {
+    "S": "Code Review Discussion"
+  },
+  "description": {
+    "S": "Practice giving and receiving code review feedback in English with constructive language."
+  },
+  "category": {
+    "S": "technical"
+  },
+  "difficulty": {
+    "S": "intermediate"
+  },
+  "isActive": {
+    "BOOL": true
+  },
+  "systemPrompt": {
+    "S": "You are a senior engineer conducting a code review discussion in English. Discuss code quality, best practices, and improvements. Use constructive feedback language. Correct grammar politely after the user finishes speaking."
+  },
+  "createdAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  },
+  "updatedAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  }
+}

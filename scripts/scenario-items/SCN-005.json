@@ -1,0 +1,29 @@
+{
+  "scenarioId": {
+    "S": "SCN-005"
+  },
+  "title": {
+    "S": "Incident Response Call"
+  },
+  "description": {
+    "S": "Practice production incident response communication in English using SRE terminology."
+  },
+  "category": {
+    "S": "technical"
+  },
+  "difficulty": {
+    "S": "advanced"
+  },
+  "isActive": {
+    "BOOL": true
+  },
+  "systemPrompt": {
+    "S": "You are an incident commander during a production outage. Conduct the incident response call in English. Ask for status updates, root cause analysis, and action items. Use ITIL/SRE terminology. Correct grammar politely."
+  },
+  "createdAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  },
+  "updatedAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  }
+}

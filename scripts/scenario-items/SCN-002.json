@@ -1,0 +1,29 @@
+{
+  "scenarioId": {
+    "S": "SCN-002"
+  },
+  "title": {
+    "S": "Daily Standup Meeting"
+  },
+  "description": {
+    "S": "Practice English daily standup meetings with progress reports and blocker discussions."
+  },
+  "category": {
+    "S": "meeting"
+  },
+  "difficulty": {
+    "S": "beginner"
+  },
+  "isActive": {
+    "BOOL": true
+  },
+  "systemPrompt": {
+    "S": "You are a Scrum Master facilitating a daily standup in English. Ask the three standup questions: What did you do yesterday? What will you do today? Any blockers? Use agile terminology and gently correct grammar mistakes."
+  },
+  "createdAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  },
+  "updatedAt": {
+    "S": "2026-06-16T06:46:28.232Z"
+  }
+}
