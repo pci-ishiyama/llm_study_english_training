@@ -13,7 +13,7 @@ import { createResponse, TABLE_NAMES } from '../../shared/types/index';
 import type { ChatLogEntity } from '../../shared/types/entities';
 import { withRetry } from '../../shared/utils/retry';
 
-const MODEL_ID = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+const MODEL_ID = 'anthropic.claude-sonnet-4-6';
 
 // SQS送信トリガーとなる会話ターン数
 const FEEDBACK_TRIGGER_TURNS = 5;

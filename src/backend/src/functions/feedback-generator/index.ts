@@ -8,7 +8,7 @@ import type { ChatLogEntity, FeedbackEntity } from '../../shared/types/entities'
 import { withRetry } from '../../shared/utils/retry';
 import { randomUUID } from 'crypto';
 
-const MODEL_ID = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+const MODEL_ID = 'anthropic.claude-sonnet-4-6';
 
 interface FeedbackResult {
   overallScore: number;

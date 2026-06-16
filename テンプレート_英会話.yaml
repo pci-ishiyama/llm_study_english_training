@@ -338,7 +338,7 @@ Resources:
                   - !Sub ${DynamoDBChatlogsTable.Arn}/index/*
               - Effect: Allow
                 Action: bedrock:InvokeModel
-                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6
               - Effect: Allow
                 Action: polly:SynthesizeSpeech
                 Resource: '*'
@@ -376,7 +376,7 @@ Resources:
                   - !Sub ${DynamoDBFeedbacksTable.Arn}/index/*
               - Effect: Allow
                 Action: bedrock:InvokeModel
-                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0
+                Resource: arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-4-6
               - Effect: Allow
                 Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
                 Resource: !GetAtt FeedbackQueue.Arn
