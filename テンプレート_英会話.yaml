@@ -1404,7 +1404,7 @@ Resources:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Sub it-english-frontend-build-${Env}
-      Description: Run lint, unit tests, and build for the React frontend
+      Description: Run lint, unit tests, build, and deploy the React frontend to S3/CloudFront
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: NO_ARTIFACTS
@@ -1423,6 +1423,10 @@ Resources:
             Value: !Ref CognitoUserPoolClient
           - Name: VITE_AWS_REGION
             Value: !Ref AWS::Region
+          - Name: FRONTEND_BUCKET
+            Value: !Ref FrontendBucket
+          - Name: CLOUDFRONT_DISTRIBUTION_ID
+            Value: !Ref CloudFrontDistribution
       Source:
         Type: GITHUB
         Location: https://github.com/pci-ishiyama/llm_study_english_training
@@ -1453,7 +1457,11 @@ Resources:
               commands:
                 - echo "Building frontend..."
                 - npm run build
-                - echo "Frontend CI build completed successfully."
+                - echo "Deploying frontend assets to S3..."
+                - aws s3 sync dist/ s3://${FRONTEND_BUCKET}/ --delete --region ${AWS_REGION}
+                - echo "Invalidating CloudFront cache..."
+                - aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
+                - echo "Frontend build and deployment completed successfully."
       LogsConfig:
         CloudWatchLogs:
           Status: ENABLED
