@@ -9,15 +9,35 @@ import ErrorMessage from '@components/common/ErrorMessage';
  * Step4 で完全実装予定
  */
 const LoginPage: React.FC = () => {
-  const { login, isLoading, error, clearError } = useAuth();
+  const {
+    login,
+    completeNewPassword,
+    pendingChallenge,
+    isLoading,
+    error,
+    clearError,
+  } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [newPassword, setNewPassword] = React.useState('');
+  const [name, setName] = React.useState('');
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    await login(email, password);
+    const result = await login(email, password);
+
+    if (result.nextStep === 'DONE') {
+      navigate('/');
+    }
+  };
+
+  const handleCompleteNewPassword = async (
+    e: React.FormEvent,
+  ): Promise<void> => {
+    e.preventDefault();
+    await completeNewPassword(newPassword, name);
     navigate('/');
   };
 
@@ -78,37 +98,79 @@ const LoginPage: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={(e) => void handleSubmit(e)}>
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
-              メールアドレス
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                style={inputStyle}
-                placeholder="example@company.com"
-                required
-              />
-            </label>
-          </div>
-          <div>
-            <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
-              パスワード
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={inputStyle}
-                placeholder="••••••••"
-                required
-              />
-            </label>
-          </div>
-          <button type="submit" style={buttonStyle} disabled={isLoading}>
-            {isLoading ? <LoadingSpinner size="sm" /> : 'ログイン'}
-          </button>
-        </form>
+        {pendingChallenge === null ? (
+          <form onSubmit={(e) => void handleSubmit(e)}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
+                メールアドレス
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  style={inputStyle}
+                  placeholder="example@company.com"
+                  required
+                />
+              </label>
+            </div>
+            <div>
+              <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
+                パスワード
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={inputStyle}
+                  placeholder="••••••••"
+                  required
+                />
+              </label>
+            </div>
+            <button type="submit" style={buttonStyle} disabled={isLoading}>
+              {isLoading ? <LoadingSpinner size="sm" /> : 'ログイン'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={(e) => void handleCompleteNewPassword(e)}>
+            <h2 style={{ color: '#1e40af', fontSize: '20px', marginBottom: '8px' }}>
+              初回パスワード変更
+            </h2>
+            <p style={{ color: '#4b5563', fontSize: '14px', marginBottom: '20px' }}>
+              初回ログインのため、新しいパスワードを設定してください。
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
+                新しいパスワード
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={inputStyle}
+                  placeholder="新しいパスワード"
+                  required
+                />
+              </label>
+            </div>
+            {pendingChallenge.missingAttributes?.includes('name') && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '13px', color: '#374151', fontWeight: 500 }}>
+                  お名前
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    style={inputStyle}
+                    placeholder="山田 太郎"
+                    required
+                  />
+                </label>
+              </div>
+            )}
+            <button type="submit" style={buttonStyle} disabled={isLoading}>
+              {isLoading ? <LoadingSpinner size="sm" /> : '新しいパスワードを設定'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

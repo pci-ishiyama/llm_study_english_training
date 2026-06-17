@@ -12,12 +12,6 @@ interface MockAuthSession {
   };
 }
 
-
-
-
-
-
-
 const notAuthenticatedError = new Error('Not authenticated');
 const mockGetCurrentUser = vi.fn<() => Promise<AuthUser>>(() => Promise.reject(notAuthenticatedError));
 const mockFetchAuthSession = vi.fn<() => Promise<MockAuthSession>>(() => Promise.reject(notAuthenticatedError));
@@ -25,31 +19,16 @@ const mockSignIn = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.res
 const mockSignOut = vi.fn<() => Promise<unknown>>(() => Promise.resolve({}));
 const mockSignUp = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
 const mockConfirmSignUp = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
+const mockConfirmSignIn = vi.fn<(input: unknown) => Promise<unknown>>(() => Promise.resolve({}));
 
 vi.mock('aws-amplify/auth', () => ({
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   getCurrentUser: (): Promise<AuthUser> => mockGetCurrentUser(),
   fetchAuthSession: (): Promise<MockAuthSession> => mockFetchAuthSession(),
   signIn: (input: unknown): Promise<unknown> => mockSignIn(input),
   signOut: (): Promise<unknown> => mockSignOut(),
   signUp: (input: unknown): Promise<unknown> => mockSignUp(input),
   confirmSignUp: (input: unknown): Promise<unknown> => mockConfirmSignUp(input),
+  confirmSignIn: (input: unknown): Promise<unknown> => mockConfirmSignIn(input),
 }));
 
 describe('useAuth', () => {
@@ -83,7 +62,12 @@ describe('useAuth', () => {
 
   it('login succeeds and sets user', async () => {
     mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
-    mockSignIn.mockResolvedValue({});
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'DONE',
+      },
+      isSignedIn: true,
+    });
     mockGetCurrentUser.mockResolvedValue({ userId: 'u2', email: 'login@example.com' });
     mockFetchAuthSession.mockResolvedValue({
       tokens: {
@@ -116,6 +100,173 @@ describe('useAuth', () => {
     expect(result.current.error).toBe('Incorrect username or password');
   });
 
+  it('login stores pending challenge when new password is required', async () => {
+    mockGetCurrentUser.mockRejectedValue(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+        missingAttributes: ['name'],
+      },
+      isSignedIn: false,
+    });
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.login('challenge@example.com', 'TempPass123!');
+    });
+
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.pendingChallenge).toEqual({
+      email: 'challenge@example.com',
+      nextStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+      missingAttributes: ['name'],
+    });
+  });
+
+  it('login sets error for unsupported sign-in steps', async () => {
+    mockGetCurrentUser.mockRejectedValue(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_TOTP_CODE',
+      },
+      isSignedIn: false,
+    });
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await expect(result.current.login('challenge@example.com', 'TempPass123!')).rejects.toThrow(
+        '未対応のサインインステップです: CONFIRM_SIGN_IN_WITH_TOTP_CODE'
+      );
+    });
+
+    expect(result.current.error).toBe('未対応のサインインステップです: CONFIRM_SIGN_IN_WITH_TOTP_CODE');
+  });
+
+  it('completeNewPassword finalizes authentication after required password change', async () => {
+    mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+        missingAttributes: ['name'],
+      },
+      isSignedIn: false,
+    });
+    mockConfirmSignIn.mockResolvedValue({
+      nextStep: { signInStep: 'DONE' },
+      isSignedIn: true,
+    });
+    mockGetCurrentUser.mockResolvedValue({ userId: 'u3', email: 'challenge@example.com' });
+    mockFetchAuthSession.mockResolvedValue({
+      tokens: {
+        idToken: {
+          payload: { email: 'challenge@example.com' },
+          toString: () => 'token',
+        },
+      },
+    });
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.login('challenge@example.com', 'TempPass123!');
+    });
+
+    await act(async () => {
+      await result.current.completeNewPassword('NewPass123!', 'New User');
+    });
+
+    expect(mockConfirmSignIn).toHaveBeenCalledWith({
+      challengeResponse: 'NewPass123!',
+      options: {
+        userAttributes: {
+          name: 'New User',
+        },
+      },
+    });
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.pendingChallenge).toBeNull();
+  });
+
+  it('completeNewPassword omits userAttributes when optional name is blank', async () => {
+    mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+      },
+      isSignedIn: false,
+    });
+    mockConfirmSignIn.mockResolvedValue({
+      nextStep: { signInStep: 'DONE' },
+      isSignedIn: true,
+    });
+    mockGetCurrentUser.mockResolvedValue({ userId: 'u4', email: 'challenge@example.com' });
+    mockFetchAuthSession.mockResolvedValue({
+      tokens: {
+        idToken: {
+          payload: { email: 'challenge@example.com' },
+          toString: () => 'token',
+        },
+      },
+    });
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.login('challenge@example.com', 'TempPass123!');
+    });
+
+    await act(async () => {
+      await result.current.completeNewPassword('NewPass123!', '   ');
+    });
+
+    expect(mockConfirmSignIn).toHaveBeenCalledWith({
+      challengeResponse: 'NewPass123!',
+      options: undefined,
+    });
+  });
+
+  it('completeNewPassword fails when there is no pending challenge', async () => {
+    mockGetCurrentUser.mockRejectedValue(new Error('Not authenticated'));
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await expect(result.current.completeNewPassword('NewPass123!')).rejects.toThrow(
+        '初回パスワード変更が必要なログイン状態ではありません'
+      );
+    });
+  });
+
+  it('completeNewPassword sets error when a subsequent sign-in step is unsupported', async () => {
+    mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+      },
+      isSignedIn: false,
+    });
+    mockConfirmSignIn.mockResolvedValue({
+      nextStep: { signInStep: 'CONFIRM_SIGN_IN_WITH_TOTP_CODE' },
+      isSignedIn: false,
+    });
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.login('challenge@example.com', 'TempPass123!');
+    });
+
+    await act(async () => {
+      await expect(result.current.completeNewPassword('NewPass123!')).rejects.toThrow(
+        '未対応のサインインステップです: CONFIRM_SIGN_IN_WITH_TOTP_CODE'
+      );
+    });
+
+    expect(result.current.error).toBe('未対応のサインインステップです: CONFIRM_SIGN_IN_WITH_TOTP_CODE');
+  });
+
   it('logout clears user', async () => {
     mockGetCurrentUser.mockResolvedValue({ userId: 'u1', email: 'test@example.com' });
     mockFetchAuthSession.mockResolvedValue({
@@ -136,6 +287,29 @@ describe('useAuth', () => {
     expect(result.current.user).toBeNull();
   });
 
+  it('logout clears pending challenge', async () => {
+    mockGetCurrentUser.mockRejectedValueOnce(new Error('Not authenticated'));
+    mockSignIn.mockResolvedValue({
+      nextStep: {
+        signInStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+      },
+      isSignedIn: false,
+    });
+    mockSignOut.mockResolvedValue({});
+    const { result } = renderHook(() => useAuth());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.login('challenge@example.com', 'TempPass123!');
+    });
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(result.current.pendingChallenge).toBeNull();
+  });
+
   it('register calls signUp', async () => {
     mockGetCurrentUser.mockRejectedValue(new Error('Not authenticated'));
     mockSignUp.mockResolvedValue({});
@@ -144,9 +318,7 @@ describe('useAuth', () => {
     await act(async () => {
       await result.current.register('new@example.com', 'password', 'New User');
     });
-    expect(mockSignUp).toHaveBeenCalledWith(
-      expect.objectContaining({ username: 'new@example.com' })
-    );
+    expect(mockSignUp).toHaveBeenCalledWith(expect.objectContaining({ username: 'new@example.com' }));
   });
 
   it('confirmRegistration calls confirmSignUp', async () => {
@@ -182,10 +354,16 @@ describe('useAuth', () => {
     const { result } = renderHook(() => useAuth());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     await act(async () => {
-      try { await result.current.login('x@x.com', 'x'); } catch { /* expected */ }
+      try {
+        await result.current.login('x@x.com', 'x');
+      } catch {
+        // expected
+      }
     });
     expect(result.current.error).not.toBeNull();
-    act(() => { result.current.clearError(); });
+    act(() => {
+      result.current.clearError();
+    });
     expect(result.current.error).toBeNull();
   });
 });
