@@ -50,18 +50,18 @@ describe('API modules', () => {
     vi.resetModules();
   });
 
-  it('getUser calls GET /users/:id', async () => {
+  it('getUser calls GET /users/me', async () => {
     const response = { success: true, data: { userId: 'u1' }, error: null };
     mockApiInstance.get.mockResolvedValue({ data: response });
 
     const { getUser } = await import('@api/users');
     const result = await getUser('u1');
 
-    expect(mockApiInstance.get).toHaveBeenCalledWith('/users/u1', undefined);
+    expect(mockApiInstance.get).toHaveBeenCalledWith('/users/me', undefined);
     expect(result).toEqual(response);
   });
 
-  it('updateUser calls PUT /users/:id', async () => {
+  it('updateUser calls PUT /users/me', async () => {
     const payload = { name: 'Test User', englishLevel: 'Intermediate' as const };
     const response = { success: true, data: { userId: 'u1' }, error: null };
     mockApiInstance.put.mockResolvedValue({ data: response });
@@ -69,7 +69,7 @@ describe('API modules', () => {
     const { updateUser } = await import('@api/users');
     const result = await updateUser('u1', payload);
 
-    expect(mockApiInstance.put).toHaveBeenCalledWith('/users/u1', payload, undefined);
+    expect(mockApiInstance.put).toHaveBeenCalledWith('/users/me', payload, undefined);
     expect(result).toEqual(response);
   });
 
@@ -141,7 +141,7 @@ describe('API modules', () => {
     expect(result).toEqual(response);
   });
 
-  it('getHistory calls GET /history with params', async () => {
+  it('getHistory calls GET /users/me/history with params', async () => {
     const params = { limit: 10, nextToken: 'token-1' };
     const response = { success: true, data: { items: [] }, error: null };
     mockApiInstance.get.mockResolvedValue({ data: response });
@@ -149,7 +149,7 @@ describe('API modules', () => {
     const { getHistory } = await import('@api/history');
     const result = await getHistory(params);
 
-    expect(mockApiInstance.get).toHaveBeenCalledWith('/history', { params });
+    expect(mockApiInstance.get).toHaveBeenCalledWith('/users/me/history', { params });
     expect(result).toEqual(response);
   });
 

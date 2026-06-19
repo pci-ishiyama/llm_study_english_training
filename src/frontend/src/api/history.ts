@@ -9,5 +9,5 @@ export const getHistory = async (params?: {
   limit?: number;
   nextToken?: string;
 }): Promise<ApiResponse<HistoryResponse>> => {
-  return apiGet<ApiResponse<HistoryResponse>>('/history', { params });
+  return apiGet<ApiResponse<HistoryResponse>>('/users/me/history', { params });
 };
