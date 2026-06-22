@@ -6,21 +6,70 @@ export interface ApiResponse {
   body: string;
 }
 
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+const defaultCorsHeaders: Record<string, string> = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Authorization,Content-Type',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+};
+
+export const createSuccessResponse = <T>(
+  statusCode: number,
+  data: T,
+): ApiResponse => ({
+  statusCode,
+  headers: defaultCorsHeaders,
+  body: JSON.stringify({
+    success: true,
+    data,
+    error: null,
+  }),
+});
+
+export const createErrorResponse = (
+  statusCode: number,
+  error: ApiErrorBody,
+): ApiResponse => ({
+  statusCode,
+  headers: defaultCorsHeaders,
+  body: JSON.stringify({
+    success: false,
+    data: null,
+    error,
+  }),
+});
+
+export const createOptionsResponse = (): ApiResponse => ({
+  statusCode: 200,
+  headers: defaultCorsHeaders,
+  body: JSON.stringify({
+    success: true,
+    data: null,
+    error: null,
+  }),
+});
 
 export const createResponse = (
   statusCode: number,
-
-
   body: unknown,
-): ApiResponse => ({
-  statusCode,
-  headers: {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Authorization,Content-Type',
-  },
-  body: JSON.stringify(body),
-});
+): ApiResponse => {
+  if (statusCode >= 400) {
+    const errorBody = body as { code?: string; message?: string; details?: Record<string, unknown> };
+    return createErrorResponse(statusCode, {
+      code: errorBody.code ?? 'ERROR',
+      message: errorBody.message ?? 'Unexpected error',
+      details: errorBody.details,
+    });
+  }
+
+  return createSuccessResponse(statusCode, body);
+};
 
 // ── DynamoDB テーブル名 ─────────────────────────────────────────
 export const TABLE_NAMES = {

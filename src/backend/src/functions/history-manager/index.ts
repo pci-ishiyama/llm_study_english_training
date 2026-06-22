@@ -1,15 +1,17 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getDynamoDbClient } from '../../shared/clients/dynamodb';
-import { createResponse, TABLE_NAMES } from '../../shared/types/index';
+import { createOptionsResponse, createResponse, TABLE_NAMES } from '../../shared/types/index';
 
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
   try {
+    if (event.httpMethod === 'OPTIONS') return createOptionsResponse();
+
     const claims = event.requestContext.authorizer?.claims as Record<string, string> | undefined;
     const userId = claims?.['sub'];
-    if (!userId) return createResponse(401, { message: 'Unauthorized' });
+    if (!userId) return createResponse(401, { code: 'UNAUTHORIZED', message: 'Unauthorized' });
 
     const sessionId = event.pathParameters?.sessionId;
     const isLogsRequest = event.resource?.endsWith('/logs') ?? false;
@@ -20,7 +22,7 @@ export const handler = async (
     return await getHistory(userId, event);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal Server Error';
-    return createResponse(500, { message });
+    return createResponse(500, { code: 'INTERNAL_SERVER_ERROR', message });
   }
 };
 
@@ -45,7 +47,10 @@ const getHistory = async (userId: string, event: APIGatewayProxyEvent): Promise<
     ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
     : undefined;
 
-  return createResponse(200, { sessions: result.Items ?? [], count: result.Count ?? 0, nextToken });
+  return createResponse(200, {
+    items: result.Items ?? [],
+    nextToken,
+  });
 };
 
 const getChatLogs = async (sessionId: string, userId: string): Promise<APIGatewayProxyResult> => {
