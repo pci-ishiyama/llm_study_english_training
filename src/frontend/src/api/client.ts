@@ -5,6 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import type { ApiError, ApiResponse } from '@appTypes/index';
 
 /**
  * axios インスタンス
@@ -57,15 +58,64 @@ const createApiClient = (): AxiosInstance => {
 
 export const apiClient: AxiosInstance = createApiClient();
 
+const isApiResponse = <T>(value: unknown): value is ApiResponse<T> => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return 'success' in value && 'data' in value && 'error' in value;
+};
+
+const normalizeError = (value: unknown): ApiError => {
+  if (typeof value === 'object' && value !== null && 'message' in value) {
+    const error = value as { code?: unknown; message?: unknown; details?: unknown };
+    return {
+      code: typeof error.code === 'string' ? error.code : 'ERROR',
+      message: typeof error.message === 'string' ? error.message : 'Unexpected error',
+      details:
+        typeof error.details === 'object' && error.details !== null
+          ? (error.details as Record<string, unknown>)
+          : undefined,
+    };
+  }
+
+  return {
+    code: 'ERROR',
+    message: 'Unexpected error',
+  };
+};
+
+const normalizeApiResponse = <T>(
+  response: AxiosResponse<T>,
+): ApiResponse<T> => {
+  if (isApiResponse<T>(response.data)) {
+    return response.data;
+  }
+
+  if (response.status >= 400) {
+    return {
+      success: false,
+      data: null,
+      error: normalizeError(response.data),
+    };
+  }
+
+  return {
+    success: true,
+    data: response.data,
+    error: null,
+  };
+};
+
 /**
  * GET リクエストヘルパー
  */
 export const apiGet = async <T>(
   url: string,
   config?: AxiosRequestConfig,
-): Promise<T> => {
+): Promise<ApiResponse<T>> => {
   const response = await apiClient.get<T>(url, config);
-  return response.data;
+  return normalizeApiResponse(response);
 };
 
 /**
@@ -75,9 +125,9 @@ export const apiPost = async <T>(
   url: string,
   data?: unknown,
   config?: AxiosRequestConfig,
-): Promise<T> => {
+): Promise<ApiResponse<T>> => {
   const response = await apiClient.post<T>(url, data, config);
-  return response.data;
+  return normalizeApiResponse(response);
 };
 
 /**
@@ -87,9 +137,9 @@ export const apiPut = async <T>(
   url: string,
   data?: unknown,
   config?: AxiosRequestConfig,
-): Promise<T> => {
+): Promise<ApiResponse<T>> => {
   const response = await apiClient.put<T>(url, data, config);
-  return response.data;
+  return normalizeApiResponse(response);
 };
 
 /**
@@ -98,7 +148,7 @@ export const apiPut = async <T>(
 export const apiDelete = async <T>(
   url: string,
   config?: AxiosRequestConfig,
-): Promise<T> => {
+): Promise<ApiResponse<T>> => {
   const response = await apiClient.delete<T>(url, config);
-  return response.data;
+  return normalizeApiResponse(response);
 };

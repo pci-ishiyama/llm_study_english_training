@@ -24,7 +24,7 @@ export const handler = async (
 
 
       case 'POST': return await createUser(event, tokenUserId);
-      case 'GET':  return await getUser(pathUserId ?? tokenUserId, claims);
+      case 'GET':  return await getUser(pathUserId ?? tokenUserId);
       case 'PUT':  return await updateUser(event, pathUserId ?? tokenUserId, tokenUserId);
 
       default:     return createResponse(405, { code: 'METHOD_NOT_ALLOWED', message: 'Method Not Allowed' });
@@ -64,34 +64,12 @@ const createUser = async (
 
 const getUser = async (
   userId: string,
-  claims?: Record<string, string>,
 ): Promise<APIGatewayProxyResult> => {
   const db = getDynamoDbClient();
   const result = await db.send(new GetCommand({ TableName: TABLE_NAMES.USERS, Key: { userId } }));
 
-
   if (!result.Item) {
-    const fallbackUser: UserEntity = {
-      userId,
-      email: claims?.email ?? `${userId}@example.com`,
-      displayName:
-        claims?.name ??
-        claims?.['cognito:username'] ??
-        claims?.email ??
-        'User',
-      nativeLanguage: 'ja',
-      targetLevel: 'beginner',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await db.send(new PutCommand({
-      TableName: TABLE_NAMES.USERS,
-      Item: fallbackUser,
-      ConditionExpression: 'attribute_not_exists(userId)',
-    }));
-
-    return createResponse(200, fallbackUser);
+    return createResponse(404, { message: 'User not found' });
   }
   return createResponse(200, result.Item);
 };
