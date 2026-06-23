@@ -154,7 +154,7 @@ describe('API modules', () => {
   });
 
   it('apiDelete returns response data', async () => {
-    const response = { success: true };
+    const response = { success: true, data: null, error: null };
     mockApiInstance.delete.mockResolvedValue({ data: response });
 
     const { apiDelete } = await import('@api/client');
