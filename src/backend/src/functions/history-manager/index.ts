@@ -48,7 +48,7 @@ const getHistory = async (userId: string, event: APIGatewayProxyEvent): Promise<
     : undefined;
 
   return createResponse(200, {
-    sessions: result.Items ?? [],
+    items: result.Items ?? [],
     count: result.Count ?? 0,
     nextToken,
   });
