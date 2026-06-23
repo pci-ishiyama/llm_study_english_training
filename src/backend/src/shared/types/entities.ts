@@ -3,9 +3,9 @@
 export interface UserEntity {
   userId: string;
   email: string;
-  displayName: string;
-  nativeLanguage: string;
-  targetLevel: 'beginner' | 'intermediate' | 'advanced';
+  name: string;
+  englishLevel: 'Beginner' | 'Intermediate' | 'Advanced';
+  learningGoal?: string;
   createdAt: string;
   updatedAt: string;
   ttl?: number;

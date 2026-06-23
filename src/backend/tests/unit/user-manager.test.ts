@@ -16,7 +16,7 @@ jest.mock('@aws-sdk/lib-dynamodb', () => ({
 const mockEvent = (overrides: Partial<APIGatewayProxyEvent> = {}): APIGatewayProxyEvent =>
   ({
     httpMethod: 'POST',
-    body: JSON.stringify({ email: 'test@example.com', displayName: 'Test User' }),
+    body: JSON.stringify({ email: 'test@example.com', name: 'Test User' }),
     headers: {},
     pathParameters: null,
     queryStringParameters: null,
@@ -48,29 +48,27 @@ describe('user-manager', () => {
     const body = JSON.parse(result.body) as {
       userId: string;
       email: string;
-      displayName: string;
-      nativeLanguage: string;
-      targetLevel: string;
+      name: string;
+      englishLevel: string;
     };
     expect(body.userId).toBe('user-123');
     expect(body.email).toBe('test@example.com');
-    expect(body.displayName).toBe('Test User');
-    expect(body.nativeLanguage).toBe('ja');
-    expect(body.targetLevel).toBe('beginner');
+    expect(body.name).toBe('Test User');
+    expect(body.englishLevel).toBe('Beginner');
   });
 
   it('POST: email がない場合 400 を返す', async () => {
-    const result = await handler(mockEvent({ body: JSON.stringify({ displayName: 'Test User' }) }));
+    const result = await handler(mockEvent({ body: JSON.stringify({ name: 'Test User' }) }));
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body) as { message: string };
-    expect(body.message).toBe('email and displayName are required');
+    expect(body.message).toBe('email and name are required');
   });
 
-  it('POST: displayName がない場合 400 を返す', async () => {
+  it('POST: name がない場合 400 を返す', async () => {
     const result = await handler(mockEvent({ body: JSON.stringify({ email: 'test@example.com' }) }));
     expect(result.statusCode).toBe(400);
     const body = JSON.parse(result.body) as { message: string };
-    expect(body.message).toBe('email and displayName are required');
+    expect(body.message).toBe('email and name are required');
   });
 
   it('POST: body が null の場合 400 を返す', async () => {
@@ -78,22 +76,20 @@ describe('user-manager', () => {
     expect(result.statusCode).toBe(400);
   });
 
-  it('POST: nativeLanguage と targetLevel を省略した場合デフォルト値が設定される', async () => {
+  it('POST: englishLevel を省略した場合デフォルト値 Beginner が設定される', async () => {
     const result = await handler(mockEvent());
     expect(result.statusCode).toBe(201);
-    const body = JSON.parse(result.body) as { nativeLanguage: string; targetLevel: string };
-    expect(body.nativeLanguage).toBe('ja');
-    expect(body.targetLevel).toBe('beginner');
+    const body = JSON.parse(result.body) as { englishLevel: string };
+    expect(body.englishLevel).toBe('Beginner');
   });
 
-  it('POST: nativeLanguage と targetLevel を指定した場合その値が使われる', async () => {
+  it('POST: englishLevel を指定した場合その値が使われる', async () => {
     const result = await handler(mockEvent({
-      body: JSON.stringify({ email: 'test@example.com', displayName: 'Test User', nativeLanguage: 'en', targetLevel: 'advanced' }),
+      body: JSON.stringify({ email: 'test@example.com', name: 'Test User', englishLevel: 'Advanced' }),
     }));
     expect(result.statusCode).toBe(201);
-    const body = JSON.parse(result.body) as { nativeLanguage: string; targetLevel: string };
-    expect(body.nativeLanguage).toBe('en');
-    expect(body.targetLevel).toBe('advanced');
+    const body = JSON.parse(result.body) as { englishLevel: string };
+    expect(body.englishLevel).toBe('Advanced');
   });
 
   it('POST: DB エラー発生時に 500 を返す', async () => {
@@ -134,10 +130,9 @@ describe('user-manager', () => {
 
     const result = await handler(mockEvent({ httpMethod: 'GET' }));
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body) as { userId: string; nativeLanguage: string; targetLevel: string };
+    const body = JSON.parse(result.body) as { userId: string; englishLevel: string };
     expect(body.userId).toBe('user-123');
-    expect(body.nativeLanguage).toBe('ja');
-    expect(body.targetLevel).toBe('beginner');
+    expect(body.englishLevel).toBe('Beginner');
   });
 
   it('GET: 他ユーザーが存在しない場合 404 を返す', async () => {
@@ -163,26 +158,26 @@ describe('user-manager', () => {
 
   // ─── PUT: ユーザー更新 ───────────────────────────────────
   it('PUT: 自分のユーザー情報を更新して 200 を返す', async () => {
-    const updatedUser = { userId: 'user-123', email: 'test@example.com', displayName: 'Updated Name', nativeLanguage: 'ja', targetLevel: 'intermediate' };
+    const updatedUser = { userId: 'user-123', email: 'test@example.com', name: 'Updated Name', englishLevel: 'Intermediate' };
     mockDbSend.mockResolvedValueOnce({ Attributes: updatedUser });
 
     const result = await handler(mockEvent({
       httpMethod: 'PUT',
-      body: JSON.stringify({ displayName: 'Updated Name', nativeLanguage: 'ja', targetLevel: 'intermediate' }),
+      body: JSON.stringify({ name: 'Updated Name', englishLevel: 'Intermediate' }),
       pathParameters: { userId: 'user-123' },
     }));
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body) as { displayName: string };
-    expect(body.displayName).toBe('Updated Name');
+    const body = JSON.parse(result.body) as { name: string };
+    expect(body.name).toBe('Updated Name');
   });
 
   it('PUT: pathParameters なしで自分のユーザー情報を更新できる', async () => {
-    const updatedUser = { userId: 'user-123', displayName: 'Updated Name' };
+    const updatedUser = { userId: 'user-123', name: 'Updated Name' };
     mockDbSend.mockResolvedValueOnce({ Attributes: updatedUser });
 
     const result = await handler(mockEvent({
       httpMethod: 'PUT',
-      body: JSON.stringify({ displayName: 'Updated Name' }),
+      body: JSON.stringify({ name: 'Updated Name' }),
     }));
     expect(result.statusCode).toBe(200);
   });
@@ -203,7 +198,7 @@ describe('user-manager', () => {
 
     const result = await handler(mockEvent({
       httpMethod: 'PUT',
-      body: JSON.stringify({ displayName: 'Updated Name' }),
+      body: JSON.stringify({ name: 'Updated Name' }),
     }));
     expect(result.statusCode).toBe(500);
     const body = JSON.parse(result.body) as { message: string };

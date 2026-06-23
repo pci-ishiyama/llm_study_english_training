@@ -407,6 +407,9 @@ Resources:
                 Resource:
                   - !GetAtt DynamoDBSessionsTable.Arn
                   - !Sub ${DynamoDBSessionsTable.Arn}/index/*
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Scan]
+                Resource:
                   - !GetAtt DynamoDBScenariosTable.Arn
               - Effect: Allow
                 Action: sqs:SendMessage

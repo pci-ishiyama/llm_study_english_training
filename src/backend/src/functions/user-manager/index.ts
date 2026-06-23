@@ -43,17 +43,22 @@ const createUser = async (
   userId: string,
 ): Promise<APIGatewayProxyResult> => {
   const body = JSON.parse(event.body ?? '{}') as Partial<UserEntity>;
-  if (!body.email || !body.displayName) {
 
-    return createResponse(400, { code: 'VALIDATION_ERROR', message: 'email and displayName are required' });
+
+
+  if (!body.email || !body.name) {
+    return createResponse(400, { code: 'VALIDATION_ERROR', message: 'email and name are required' });
   }
   const now = new Date().toISOString();
   const user: UserEntity = {
     userId,
     email: body.email,
-    displayName: body.displayName,
-    nativeLanguage: body.nativeLanguage ?? 'ja',
-    targetLevel: body.targetLevel ?? 'beginner',
+
+
+
+    name: body.name,
+    englishLevel: body.englishLevel ?? 'Beginner',
+    learningGoal: body.learningGoal,
     createdAt: now,
     updatedAt: now,
   };
@@ -83,15 +88,18 @@ const getOrCreateUser = async (
   // Cognitoのclaimsからユーザー情報を取得して自動作成
   const claims = event.requestContext.authorizer?.claims as Record<string, string> | undefined;
   const email = claims?.['email'] ?? '';
-  const displayName = claims?.['name'] ?? claims?.['email'] ?? userId;
+
+  const name = claims?.['name'] ?? claims?.['email'] ?? userId;
 
   const now = new Date().toISOString();
   const newUser: UserEntity = {
     userId,
     email,
-    displayName,
-    nativeLanguage: 'ja',
-    targetLevel: 'beginner',
+
+
+
+    name,
+    englishLevel: 'Beginner',
     createdAt: now,
     updatedAt: now,
   };
@@ -122,10 +130,13 @@ const updateUser = async (event: APIGatewayProxyEvent, userId: string, tokenUser
   const result = await db.send(new UpdateCommand({
     TableName: TABLE_NAMES.USERS,
     Key: { userId },
-    UpdateExpression: 'SET displayName = :dn, nativeLanguage = :nl, targetLevel = :tl, updatedAt = :ua',
-    ExpressionAttributeValues: { ':dn': body.displayName, ':nl': body.nativeLanguage, ':tl': body.targetLevel, ':ua': now },
+
+
+    UpdateExpression: 'SET #nm = :nm, englishLevel = :el, learningGoal = :lg, updatedAt = :ua',
+    ExpressionAttributeNames: { '#nm': 'name' },
+    ExpressionAttributeValues: { ':nm': body.name, ':el': body.englishLevel, ':lg': body.learningGoal, ':ua': now },
     ConditionExpression: 'attribute_exists(userId)',
-    ReturnValues: 'ALL_NEW',
+        ReturnValues: 'ALL_NEW',
   }));
   return createResponse(200, result.Attributes);
 };
