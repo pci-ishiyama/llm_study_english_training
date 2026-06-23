@@ -34,7 +34,7 @@ const RecommendedScenarioCard: React.FC<RecommendedScenarioCardProps> = ({ scena
           <h3 style={{ margin: 0, fontSize: '22px', color: '#111827' }}>{scenario.title}</h3>
           <p style={{ ...metaStyle, marginTop: '8px' }}>{scenario.description}</p>
         </div>
-        <p style={metaStyle}>{`カテゴリ: ${scenario.category}`}</p>
+        <p style={metaStyle}>{`シーン: ${scenario.scene}`}</p>
         <p style={metaStyle}>{`難易度: ${scenario.difficulty}`}</p>
         <div>
           <button

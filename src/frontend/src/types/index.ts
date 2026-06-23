@@ -42,13 +42,11 @@ export interface Scenario {
   scenarioId: string;
   title: string;
   description: string;
-  category: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  isActive: boolean;
-  systemPrompt: string;
+  scene: string;
+  difficulty: EnglishLevel;
+  initialMessage: string;
   lastScore?: number;
   lastPlayedAt?: string;
-  initialMessage?: string;
 }
 
 // ===========================
