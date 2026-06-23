@@ -139,8 +139,10 @@ describe('sessionSlice', () => {
     scenarioId: 's1',
     title: 'Test Scenario',
     description: 'desc',
-    scene: 'office',
-    difficulty: 'Intermediate' as const,
+    category: 'meeting',
+    difficulty: 'intermediate' as const,
+    isActive: true,
+    systemPrompt: 'You are a helpful assistant.',
   };
 
   const mockStartResponse = {
