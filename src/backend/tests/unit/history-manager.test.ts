@@ -50,8 +50,8 @@ describe('history-manager', () => {
 
     const result = await handler(mockEvent());
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body) as { sessions: unknown[]; count: number; nextToken?: string };
-    expect(body.sessions).toHaveLength(2);
+    const body = JSON.parse(result.body) as { items: unknown[]; count: number; nextToken?: string };
+    expect(body.items).toHaveLength(2);
     expect(body.count).toBe(2);
     expect(body.nextToken).toBeUndefined();
   });
@@ -61,8 +61,8 @@ describe('history-manager', () => {
 
     const result = await handler(mockEvent());
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body) as { sessions: unknown[]; count: number };
-    expect(body.sessions).toHaveLength(0);
+    const body = JSON.parse(result.body) as { items: unknown[]; count: number };
+    expect(body.items).toHaveLength(0);
     expect(body.count).toBe(0);
   });
 
@@ -145,9 +145,9 @@ describe('history-manager', () => {
       resource: '/sessions/{sessionId}',
     }));
     expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body) as { sessions: unknown[] };
-    // sessions キーが存在すること（履歴一覧のレスポンス形式）
-    expect(body).toHaveProperty('sessions');
+    const body = JSON.parse(result.body) as { items: unknown[] };
+    // items キーが存在すること（履歴一覧のレスポンス形式）
+    expect(body).toHaveProperty('items');
   });
 
   // ─── エラーハンドリング ──────────────────────────────────
