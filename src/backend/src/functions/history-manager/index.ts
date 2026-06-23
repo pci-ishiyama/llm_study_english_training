@@ -35,7 +35,7 @@ const getHistory = async (userId: string, event: APIGatewayProxyEvent): Promise<
   const db = getDynamoDbClient();
   const result = await db.send(new QueryCommand({
     TableName: TABLE_NAMES.SESSIONS,
-    IndexName: 'userId-startedAt-index',
+    IndexName: 'userId-createdAt-index',
     KeyConditionExpression: 'userId = :uid',
     ExpressionAttributeValues: { ':uid': userId },
     ScanIndexForward: false,

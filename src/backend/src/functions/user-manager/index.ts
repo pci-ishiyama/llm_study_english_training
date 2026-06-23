@@ -1,4 +1,5 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getDynamoDbClient } from '../../shared/clients/dynamodb';
 
@@ -24,7 +25,7 @@ export const handler = async (
 
 
       case 'POST': return await createUser(event, tokenUserId);
-      case 'GET':  return await getUser(pathUserId ?? tokenUserId);
+      case 'GET':  return await getOrCreateUser(event, pathUserId ?? tokenUserId, tokenUserId);
       case 'PUT':  return await updateUser(event, pathUserId ?? tokenUserId, tokenUserId);
 
       default:     return createResponse(405, { code: 'METHOD_NOT_ALLOWED', message: 'Method Not Allowed' });
@@ -62,16 +63,54 @@ const createUser = async (
 };
 
 
-const getUser = async (
+const getOrCreateUser = async (
+  event: APIGatewayProxyEvent,
   userId: string,
+  tokenUserId: string,
 ): Promise<APIGatewayProxyResult> => {
   const db = getDynamoDbClient();
   const result = await db.send(new GetCommand({ TableName: TABLE_NAMES.USERS, Key: { userId } }));
 
-  if (!result.Item) {
-    return createResponse(404, { message: 'User not found' });
+  if (result.Item) {
+    return createResponse(200, result.Item);
   }
-  return createResponse(200, result.Item);
+
+  // 自分自身のリソースへのアクセスのみ自動作成を許可
+  if (userId !== tokenUserId) {
+    return createResponse(404, { code: 'USER_NOT_FOUND', message: 'User not found' });
+  }
+
+  // Cognitoのclaimsからユーザー情報を取得して自動作成
+  const claims = event.requestContext.authorizer?.claims as Record<string, string> | undefined;
+  const email = claims?.['email'] ?? '';
+  const displayName = claims?.['name'] ?? claims?.['email'] ?? userId;
+
+  const now = new Date().toISOString();
+  const newUser: UserEntity = {
+    userId,
+    email,
+    displayName,
+    nativeLanguage: 'ja',
+    targetLevel: 'beginner',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await db.send(new PutCommand({
+      TableName: TABLE_NAMES.USERS,
+      Item: newUser,
+      ConditionExpression: 'attribute_not_exists(userId)',
+    }));
+    return createResponse(200, newUser);
+  } catch (err) {
+    // 競合（同時リクエスト）の場合は既存レコードを返す
+    if ((err as ConditionalCheckFailedException).name === 'ConditionalCheckFailedException') {
+      const existing = await db.send(new GetCommand({ TableName: TABLE_NAMES.USERS, Key: { userId } }));
+      return createResponse(200, existing.Item);
+    }
+    throw err;
+  }
 };
 
 const updateUser = async (event: APIGatewayProxyEvent, userId: string, tokenUserId: string): Promise<APIGatewayProxyResult> => {
