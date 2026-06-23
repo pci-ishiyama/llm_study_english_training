@@ -128,10 +128,25 @@ describe('user-manager', () => {
     expect(body.userId).toBe('other-user');
   });
 
-  it('GET: 存在しないユーザーの場合 404 を返す', async () => {
-    mockDbSend.mockResolvedValueOnce({ Item: undefined });
+  it('GET: 自分自身が存在しない場合は自動作成して 200 を返す', async () => {
+    // 1回目のGetCommand（存在確認）→ undefined、PutCommand → 成功
+    mockDbSend.mockResolvedValueOnce({ Item: undefined }).mockResolvedValueOnce({});
 
     const result = await handler(mockEvent({ httpMethod: 'GET' }));
+    expect(result.statusCode).toBe(200);
+    const body = JSON.parse(result.body) as { userId: string; nativeLanguage: string; targetLevel: string };
+    expect(body.userId).toBe('user-123');
+    expect(body.nativeLanguage).toBe('ja');
+    expect(body.targetLevel).toBe('beginner');
+  });
+
+  it('GET: 他ユーザーが存在しない場合 404 を返す', async () => {
+    mockDbSend.mockResolvedValueOnce({ Item: undefined });
+
+    const result = await handler(mockEvent({
+      httpMethod: 'GET',
+      pathParameters: { userId: 'other-user' },
+    }));
     expect(result.statusCode).toBe(404);
     const body = JSON.parse(result.body) as { message: string };
     expect(body.message).toBe('User not found');
