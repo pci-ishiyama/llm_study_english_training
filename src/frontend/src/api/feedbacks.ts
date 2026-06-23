@@ -8,5 +8,5 @@ import type { ApiResponse, Feedback } from '@appTypes/index';
 export const getFeedback = async (
   sessionId: string,
 ): Promise<ApiResponse<Feedback>> => {
-  return apiGet<ApiResponse<Feedback>>(`/sessions/${sessionId}/feedback`);
+  return apiGet<Feedback>(`/sessions/${sessionId}/feedback`);
 };

@@ -15,7 +15,7 @@ import type {
 export const startSession = async (
   data: StartSessionRequest,
 ): Promise<ApiResponse<StartSessionResponse>> => {
-  return apiPost<ApiResponse<StartSessionResponse>>('/sessions', data);
+  return apiPost<StartSessionResponse>('/sessions', data);
 };
 
 /**
@@ -24,7 +24,7 @@ export const startSession = async (
 export const endSession = async (
   sessionId: string,
 ): Promise<ApiResponse<EndSessionResponse>> => {
-  return apiPut<ApiResponse<EndSessionResponse>>(
+  return apiPut<EndSessionResponse>(
     `/sessions/${sessionId}/end`,
     {},
   );
@@ -37,7 +37,7 @@ export const sendChat = async (
   sessionId: string,
   data: SendChatRequest,
 ): Promise<ApiResponse<SendChatResponse>> => {
-  return apiPost<ApiResponse<SendChatResponse>>(
+  return apiPost<SendChatResponse>(
     `/sessions/${sessionId}/chat`,
     data,
   );

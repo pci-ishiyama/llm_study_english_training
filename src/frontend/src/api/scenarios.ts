@@ -6,7 +6,7 @@ import type { ApiResponse, Scenario } from '@appTypes/index';
  * シナリオ一覧取得
  */
 export const getScenarios = async (): Promise<ApiResponse<Scenario[]>> => {
-  return apiGet<ApiResponse<Scenario[]>>('/scenarios');
+  return apiGet<Scenario[]>('/scenarios');
 };
 
 /**
@@ -15,5 +15,5 @@ export const getScenarios = async (): Promise<ApiResponse<Scenario[]>> => {
 export const getScenario = async (
   scenarioId: string,
 ): Promise<ApiResponse<Scenario>> => {
-  return apiGet<ApiResponse<Scenario>>(`/scenarios/${scenarioId}`);
+  return apiGet<Scenario>(`/scenarios/${scenarioId}`);
 };
