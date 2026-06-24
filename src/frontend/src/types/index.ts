@@ -38,6 +38,8 @@ export interface UpdateUserRequest {
 // シナリオ
 // ===========================
 
+export type DifficultyFilter = 'all' | 'Beginner' | 'Intermediate' | 'Advanced';
+
 export interface Scenario {
   scenarioId: string;
   title: string;

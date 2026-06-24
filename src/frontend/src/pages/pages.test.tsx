@@ -17,6 +17,14 @@ vi.mock('aws-amplify/auth', () => ({
   confirmSignUp: vi.fn(),
 }));
 
+vi.mock('@api/scenarios', () => ({
+  getScenarios: vi.fn().mockResolvedValue({ data: [], error: null }),
+}));
+
+vi.mock('@api/sessions', () => ({
+  startSession: vi.fn().mockResolvedValue({ data: { sessionId: 'test-session' }, error: null }),
+}));
+
 describe('Placeholder Pages', () => {
   it('HomePage renders', () => {
     render(<MemoryRouter><HomePage /></MemoryRouter>);
@@ -25,7 +33,7 @@ describe('Placeholder Pages', () => {
 
   it('SessionNewPage renders', () => {
     render(<MemoryRouter><SessionNewPage /></MemoryRouter>);
-    expect(screen.getByText(/シナリオ選択/)).toBeTruthy();
+    expect(screen.getByText(/シナリオを選択/)).toBeTruthy();
   });
 
   it('ChatPage renders', () => {
