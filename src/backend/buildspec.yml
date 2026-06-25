@@ -7,7 +7,7 @@ env:
 phases:
   install:
     runtime-versions:
-      nodejs: 22
+      nodejs: 20
     commands:
       - echo "Installing dependencies..."
       - cd src/backend
@@ -18,11 +18,34 @@ phases:
       - echo "Running lint..."
       - npm run lint
       - echo "Running unit tests..."
-      - npm run test:unit
+      - npm run test:unit -- --ci
 
   build:
     commands:
       - echo "Bundling Lambda functions..."
       - npm run bundle
-      - echo "Backend CI build completed successfully."
+      - echo "Packaging Lambda zip files..."
+      - |
+        for FUNC in chat-handler feedback-generator session-manager user-manager history-manager; do
+          zip -j dist/${FUNC}.zip dist/${FUNC}/index.js
+          aws s3 cp dist/${FUNC}.zip s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip
+          echo "Uploaded ${FUNC}.zip to s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip"
+        done
+
+  post_build:
+    commands:
+      - echo "Deploying Lambda functions..."
+      - aws lambda update-function-code --function-name ${CHAT_HANDLER_FUNCTION}       --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/chat-handler.zip
+      - aws lambda update-function-code --function-name ${FEEDBACK_GENERATOR_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/feedback-generator.zip
+      - aws lambda update-function-code --function-name ${SESSION_MANAGER_FUNCTION}    --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/session-manager.zip
+      - aws lambda update-function-code --function-name ${USER_MANAGER_FUNCTION}       --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/user-manager.zip
+      - aws lambda update-function-code --function-name ${HISTORY_MANAGER_FUNCTION}    --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip
+      - echo "All Lambda functions deployed successfully."
+
+reports:
+  jest-coverage:
+    files:
+      - coverage/clover.xml
+    base-directory: src/backend
+    file-format: CLOVERXML
 

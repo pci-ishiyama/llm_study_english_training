@@ -1558,44 +1558,10 @@ Resources:
             Value: !Ref LambdaUserManager
           - Name: HISTORY_MANAGER_FUNCTION
             Value: !Ref LambdaHistoryManager
-      Source:
+            Source:
         Type: GITHUB
         Location: https://github.com/pci-ishiyama/llm_study_english_training
-        BuildSpec: |
-          version: 0.2
-          phases:
-            install:
-              runtime-versions:
-                nodejs: 20
-              commands:
-                - cd src/backend
-                - npm ci
-            pre_build:
-              commands:
-                - echo "Running unit tests..."
-                - npm run test:unit -- --ci
-            build:
-              commands:
-                - echo "Bundling Lambda functions..."
-                - npm run bundle
-                - |
-                  for FUNC in chat-handler feedback-generator session-manager user-manager history-manager; do
-                    zip -j dist/${FUNC}.zip dist/${FUNC}/index.js
-                    aws s3 cp dist/${FUNC}.zip s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip
-                  done
-            post_build:
-              commands:
-                - echo "Deploying Lambda functions..."
-                - aws lambda update-function-code --function-name ${CHAT_HANDLER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/chat-handler.zip
-                - aws lambda update-function-code --function-name ${FEEDBACK_GENERATOR_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/feedback-generator.zip
-                - aws lambda update-function-code --function-name ${SESSION_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/session-manager.zip
-                - aws lambda update-function-code --function-name ${USER_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/user-manager.zip
-                - aws lambda update-function-code --function-name ${HISTORY_MANAGER_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip
-          reports:
-            jest-coverage:
-              files:
-                - src/backend/coverage/clover.xml
-              file-format: CLOVERXML
+        BuildSpec: src/backend/buildspec.yml
       LogsConfig:
         CloudWatchLogs:
           Status: ENABLED
@@ -1634,38 +1600,7 @@ Resources:
       Source:
         Type: GITHUB
         Location: https://github.com/pci-ishiyama/llm_study_english_training
-        BuildSpec: |
-          version: 0.2
-          phases:
-            install:
-              runtime-versions:
-                nodejs: 20
-              commands:
-                - cd src/frontend
-                - npm ci
-            pre_build:
-              commands:
-                - echo "Running lint..."
-                - npm run lint
-                - echo "Running frontend unit tests..."
-                - npm run test -- --run
-                - echo "Setting environment variables for build..."
-                - |
-                  cat > .env.production << EOF
-                  VITE_COGNITO_USER_POOL_ID=${VITE_COGNITO_USER_POOL_ID}
-                  VITE_COGNITO_CLIENT_ID=${VITE_COGNITO_CLIENT_ID}
-                  VITE_API_ENDPOINT=${VITE_API_ENDPOINT}
-                  VITE_AWS_REGION=${VITE_AWS_REGION}
-                  EOF
-            build:
-              commands:
-                - echo "Building frontend..."
-                - npm run build
-                - echo "Deploying frontend assets to S3..."
-                - aws s3 sync dist/ s3://${FRONTEND_BUCKET}/ --delete --region ${AWS_REGION}
-                - echo "Invalidating CloudFront cache..."
-                - aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*"
-                - echo "Frontend build and deployment completed successfully."
+        BuildSpec: src/frontend/buildspec.yml
       LogsConfig:
         CloudWatchLogs:
           Status: ENABLED
