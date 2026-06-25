@@ -66,7 +66,7 @@ export const useScenarioSelection = (): UseScenarioSelectionReturn => {
     try {
       const response = await startSession({ scenarioId: selectedId });
       if (response.success && response.data !== null) {
-        void navigate(`/sessions/${response.data.sessionId}`);
+        void navigate(`/session/${response.data.sessionId}/chat`);
       } else {
         setError('セッションの開始に失敗しました');
       }

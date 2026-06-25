@@ -1,6 +1,8 @@
 ﻿import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { store } from '@store/index';
 import HomePage from '@pages/HomePage';
 import SessionNewPage from '@pages/SessionNewPage';
 import ChatPage from '@pages/ChatPage';
@@ -23,6 +25,15 @@ vi.mock('@api/scenarios', () => ({
 
 vi.mock('@api/sessions', () => ({
   startSession: vi.fn().mockResolvedValue({ data: { sessionId: 'test-session' }, error: null }),
+  endSession: vi.fn().mockResolvedValue({ success: true, data: { status: 'completed' }, error: null }),
+}));
+
+vi.mock('@api/feedbacks', () => ({
+  getFeedback: vi.fn().mockResolvedValue({ success: false, data: null, error: null }),
+}));
+
+vi.mock('@api/transcribe', () => ({
+  transcribeAudio: vi.fn().mockResolvedValue({ success: true, data: { transcript: '' }, error: null }),
 }));
 
 describe('Placeholder Pages', () => {
@@ -36,9 +47,18 @@ describe('Placeholder Pages', () => {
     expect(screen.getByText(/シナリオを選択/)).toBeTruthy();
   });
 
-  it('ChatPage renders', () => {
-    render(<MemoryRouter><ChatPage /></MemoryRouter>);
-    expect(screen.getByText(/チャット/)).toBeTruthy();
+  it('ChatPage renders with sessionId', () => {
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/session/test-session-id/chat']}>
+          <Routes>
+            <Route path="/session/:sessionId/chat" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </Provider>
+    );
+    // チャット画面がレンダリングされることを確認（チャット履歴エリアの存在で確認）
+    expect(screen.getByRole('log', { name: 'チャット履歴' })).toBeTruthy();
   });
 
   it('FeedbackPage renders', () => {

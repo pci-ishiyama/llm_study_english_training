@@ -75,8 +75,8 @@ export const handler = async (
       return createResponse(400, { message: 'userMessage is required' });
     }
 
-    // 環境変数チェック
-    const audioBucketName = process.env.AUDIO_BUCKET_NAME;
+    // 環境変数チェック（テンプレートでは S3_BUCKET_AUDIO として設定）
+    const audioBucketName = process.env.S3_BUCKET_AUDIO ?? process.env.AUDIO_BUCKET_NAME;
     if (!audioBucketName) {
       throw new Error('AUDIO_BUCKET_NAME environment variable is not set');
     }

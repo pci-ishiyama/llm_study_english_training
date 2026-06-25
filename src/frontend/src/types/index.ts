@@ -98,9 +98,15 @@ export interface ChatLog {
   timestamp: string;
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface SendChatRequest {
   userMessage: string;
   messageType: 'text';
+  conversationHistory?: ConversationMessage[];
 }
 
 export interface SendChatResponse {
