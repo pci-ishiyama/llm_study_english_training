@@ -48,9 +48,9 @@ jest.mock('@aws-sdk/lib-dynamodb', () => ({
 const mockEvent = (overrides: Partial<APIGatewayProxyEvent> = {}): APIGatewayProxyEvent =>
   ({
     httpMethod: 'POST',
-    body: JSON.stringify({ sessionId: 'session-001', userMessage: 'Hello', conversationHistory: [] }),
+    body: JSON.stringify({ userMessage: 'Hello', conversationHistory: [] }),
     headers: {},
-    pathParameters: null,
+    pathParameters: { sessionId: 'session-001' },
     queryStringParameters: null,
     requestContext: { authorizer: { claims: { sub: 'user-123' } } },
     ...overrides,
@@ -87,13 +87,13 @@ describe('chat-handler', () => {
     expect(result.statusCode).toBe(401);
   });
 
-  it('sessionId がない場合 400 を返す', async () => {
-    const result = await handler(mockEvent({ body: JSON.stringify({ userMessage: 'Hi' }) }));
+    it('sessionId がない場合 400 を返す', async () => {
+    const result = await handler(mockEvent({ pathParameters: null }));
     expect(result.statusCode).toBe(400);
   });
 
   it('userMessage がない場合 400 を返す', async () => {
-    const result = await handler(mockEvent({ body: JSON.stringify({ sessionId: 'session-001' }) }));
+    const result = await handler(mockEvent({ body: JSON.stringify({}) }));
     expect(result.statusCode).toBe(400);
   });
 
@@ -102,17 +102,17 @@ describe('chat-handler', () => {
     expect(result.statusCode).toBe(400);
   });
 
-  it('conversationHistory を省略しても正常動作する', async () => {
+    it('conversationHistory を省略しても正常動作する', async () => {
     const result = await handler(mockEvent({
-      body: JSON.stringify({ sessionId: 'session-001', userMessage: 'Hello' }),
+      body: JSON.stringify({ userMessage: 'Hello' }),
     }));
     expect(result.statusCode).toBe(200);
   });
 
-  it('5ターン目に SQS へフィードバックリクエストを送信する', async () => {
+    it('5ターン目に SQS へフィードバックリクエストを送信する', async () => {
     const history = Array.from({ length: 4 }, (_, i) => ({ role: 'user' as const, content: String(i) }));
     const result = await handler(mockEvent({
-      body: JSON.stringify({ sessionId: 'session-001', userMessage: 'Hello', conversationHistory: history }),
+      body: JSON.stringify({ userMessage: 'Hello', conversationHistory: history }),
     }));
     expect(result.statusCode).toBe(200);
   });
@@ -138,11 +138,11 @@ describe('chat-handler', () => {
     expect(result.statusCode).toBe(500);
   });
 
-  it('FEEDBACK_QUEUE_URL 未設定時でも 5 ターン目は 500 を返す', async () => {
+    it('FEEDBACK_QUEUE_URL 未設定時でも 5 ターン目は 500 を返す', async () => {
     delete process.env.FEEDBACK_QUEUE_URL;
     const history = Array.from({ length: 4 }, (_, i) => ({ role: 'user' as const, content: String(i) }));
     const result = await handler(mockEvent({
-      body: JSON.stringify({ sessionId: 'session-001', userMessage: 'Hello', conversationHistory: history }),
+      body: JSON.stringify({ userMessage: 'Hello', conversationHistory: history }),
     }));
     expect(result.statusCode).toBe(500);
     process.env.FEEDBACK_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123/test-queue';

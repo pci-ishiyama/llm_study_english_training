@@ -24,7 +24,6 @@ interface ConversationMessage {
 }
 
 interface ChatRequestBody {
-  sessionId?: string;
   userMessage?: string;
   conversationHistory?: ConversationMessage[];
 }
@@ -58,19 +57,19 @@ export const handler = async (
     }
 
 
+    // パスパラメータから sessionId を取得
+    const sessionId = event.pathParameters?.['sessionId'];
+    if (!sessionId) {
+      return createResponse(400, { message: 'sessionId is required' });
+    }
+
     // リクエストボディのバリデーション
     if (!event.body) {
       return createResponse(400, { message: 'Request body is required' });
     }
     const body = JSON.parse(event.body) as ChatRequestBody;
-    const { sessionId, userMessage, conversationHistory = [] } = body;
+    const { userMessage, conversationHistory = [] } = body;
 
-
-
-
-    if (!sessionId) {
-      return createResponse(400, { message: 'sessionId is required' });
-    }
     if (!userMessage) {
       return createResponse(400, { message: 'userMessage is required' });
     }
