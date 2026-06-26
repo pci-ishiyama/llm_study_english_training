@@ -1558,7 +1558,7 @@ Resources:
             Value: !Ref LambdaUserManager
           - Name: HISTORY_MANAGER_FUNCTION
             Value: !Ref LambdaHistoryManager
-            Source:
+      Source:
         Type: GITHUB
         Location: https://github.com/pci-ishiyama/llm_study_english_training
         BuildSpec: src/backend/buildspec.yml
