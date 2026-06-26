@@ -1,8 +1,8 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, type RenderResult } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, type EnhancedStore } from '@reduxjs/toolkit';
 import authReducer from '@store/authSlice';
 import sessionReducer from '@store/sessionSlice';
 import ChatPage from '@pages/ChatPage';
@@ -75,7 +75,7 @@ const defaultSessionState: SessionState = {
   isAudioPlaying: false,
 };
 
-const createTestStore = (sessionOverrides: Partial<SessionState> = {}) => {
+const createTestStore = (sessionOverrides: Partial<SessionState> = {}): EnhancedStore => {
   return configureStore({
     reducer: {
       auth: authReducer,
@@ -87,7 +87,7 @@ const createTestStore = (sessionOverrides: Partial<SessionState> = {}) => {
   });
 };
 
-const renderChatPage = (sessionId = 'test-session-id', storeOverrides: Partial<SessionState> = {}) => {
+const renderChatPage = (sessionId = 'test-session-id', storeOverrides: Partial<SessionState> = {}): RenderResult => {
   const testStore = createTestStore(storeOverrides);
   return render(
     <Provider store={testStore}>
