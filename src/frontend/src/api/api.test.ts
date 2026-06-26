@@ -185,4 +185,83 @@ describe('API modules', () => {
       response: { status: 401 },
     });
   });
+
+  it('getScenarios with difficulty filter appends query string', async () => {
+    const response = { success: true, data: [], error: null };
+    mockApiInstance.get.mockResolvedValue({ data: response });
+
+    const { getScenarios } = await import('@api/scenarios');
+    const result = await getScenarios('Beginner');
+
+    expect(mockApiInstance.get).toHaveBeenCalledWith('/scenarios?difficulty=Beginner', undefined);
+    expect(result).toEqual(response);
+  });
+
+  it('getScenarios with difficulty=all does not append query string', async () => {
+    const response = { success: true, data: [], error: null };
+    mockApiInstance.get.mockResolvedValue({ data: response });
+
+    const { getScenarios } = await import('@api/scenarios');
+    const result = await getScenarios('all');
+
+    expect(mockApiInstance.get).toHaveBeenCalledWith('/scenarios', undefined);
+    expect(result).toEqual(response);
+  });
+
+  it('response interceptor redirects to /login on 401 AxiosError', async () => {
+    vi.resetModules();
+    mockApiInstance.interceptors.response.use.mockClear();
+
+    // window.location.href をモック
+    const originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      value: { href: '' },
+      writable: true,
+      configurable: true,
+    });
+
+    await import('@api/client');
+    const responseInterceptor = mockApiInstance.interceptors.response.use.mock.calls[0]?.[1] as
+      | ((error: unknown) => Promise<never>)
+      | undefined;
+
+    vi.mocked(axios.isAxiosError).mockReturnValue(true);
+
+    await expect(
+      responseInterceptor?.({ response: { status: 401 } })
+    ).rejects.toEqual({ response: { status: 401 } });
+
+    expect(window.location.href).toBe('/login');
+
+    // 元に戻す
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('request interceptor handles missing idToken gracefully', async () => {
+    vi.resetModules();
+    mockApiInstance.interceptors.request.use.mockClear();
+
+    const authModule = await import('aws-amplify/auth');
+    vi.mocked(authModule.fetchAuthSession).mockResolvedValue({
+      tokens: undefined,
+      credentials: undefined,
+      identityId: undefined,
+      userSub: undefined,
+    });
+
+    await import('@api/client');
+    const requestInterceptor = mockApiInstance.interceptors.request.use.mock.calls[0]?.[0] as
+      | ((config: Record<string, unknown>) => Promise<Record<string, unknown>>)
+      | undefined;
+
+    const mockConfig = { headers: { set: vi.fn() } };
+    const result = await requestInterceptor?.(mockConfig as unknown as Record<string, unknown>);
+    expect(result).toBe(mockConfig);
+    // idToken がない場合は Authorization ヘッダーを設定しない
+    expect(mockConfig.headers.set).not.toHaveBeenCalled();
+  });
 });

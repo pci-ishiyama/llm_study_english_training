@@ -125,4 +125,154 @@ describe('useHomePage', () => {
     expect(result.current.data).toBeNull();
     expect(result.current.error).toBe('\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
   });
+
+  it('returns error when userId is empty string', async () => {
+    const { result } = renderHook(() => useHomePage(''));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('\u30e6\u30fc\u30b6\u30fc\u60c5\u5831\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093');
+  });
+
+  it('returns error when history loading fails', async () => {
+    vi.mocked(getUser).mockResolvedValue({
+      success: true,
+      data: {
+        userId: 'user-123',
+        name: 'Taro',
+        englishLevel: 'Intermediate',
+        createdAt: '2026-06-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(getHistory).mockResolvedValue({
+      success: false,
+      data: null,
+      error: { code: 'ERR', message: 'fail' },
+    });
+    vi.mocked(getScenarios).mockResolvedValue({ success: true, data: [], error: null });
+
+    const { result } = renderHook(() => useHomePage('user-123'));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('\u5b66\u7fd2\u5c65\u6b74\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+  });
+
+  it('returns error when scenarios loading fails', async () => {
+    vi.mocked(getUser).mockResolvedValue({
+      success: true,
+      data: {
+        userId: 'user-123',
+        name: 'Taro',
+        englishLevel: 'Intermediate',
+        createdAt: '2026-06-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(getHistory).mockResolvedValue({
+      success: true,
+      data: { items: [] },
+      error: null,
+    });
+    vi.mocked(getScenarios).mockResolvedValue({
+      success: false,
+      data: null,
+      error: { code: 'ERR', message: 'fail' },
+    });
+
+    const { result } = renderHook(() => useHomePage('user-123'));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('\u30b7\u30ca\u30ea\u30aa\u4e00\u89a7\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+  });
+
+  it('returns error when no recommended scenario (empty scenarios list)', async () => {
+    vi.mocked(getUser).mockResolvedValue({
+      success: true,
+      data: {
+        userId: 'user-123',
+        name: 'Taro',
+        englishLevel: 'Intermediate',
+        createdAt: '2026-06-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(getHistory).mockResolvedValue({
+      success: true,
+      data: { items: [] },
+      error: null,
+    });
+    vi.mocked(getScenarios).mockResolvedValue({
+      success: true,
+      data: [],
+      error: null,
+    });
+
+    const { result } = renderHook(() => useHomePage('user-123'));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('\u63a8\u5968\u30b7\u30ca\u30ea\u30aa\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+  });
+
+  it('calculates averageScore as 0 when no history items', async () => {
+    vi.mocked(getUser).mockResolvedValue({
+      success: true,
+      data: {
+        userId: 'user-123',
+        name: 'Taro',
+        englishLevel: 'Intermediate',
+        createdAt: '2026-06-01T00:00:00.000Z',
+      },
+      error: null,
+    });
+    vi.mocked(getHistory).mockResolvedValue({
+      success: true,
+      data: { items: [] },
+      error: null,
+    });
+    vi.mocked(getScenarios).mockResolvedValue({
+      success: true,
+      data: [
+        {
+          scenarioId: 'scenario-1',
+          title: 'Daily Standup',
+          description: 'Share daily updates',
+          scene: 'meeting',
+          difficulty: 'Beginner' as const,
+          initialMessage: 'You are a Scrum Master.',
+        },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHook(() => useHomePage('user-123'));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+    const data = result.current.data as unknown as Record<string, unknown>;
+    expect(data['averageScore']).toBe(0);
+    expect(data['weeklyCount']).toBe(0);
+    expect(data['streakDays']).toBe(0);
+  });
+
+  it('handles non-Error thrown in load', async () => {
+    vi.mocked(getUser).mockRejectedValue('string error');
+    vi.mocked(getHistory).mockResolvedValue({ success: true, data: { items: [] }, error: null });
+    vi.mocked(getScenarios).mockResolvedValue({ success: true, data: [], error: null });
+
+    const { result } = renderHook(() => useHomePage('user-123'));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toBeNull();
+    expect(result.current.error).toBe('\u30db\u30fc\u30e0\u753b\u9762\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f');
+  });
 });

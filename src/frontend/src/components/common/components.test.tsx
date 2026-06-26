@@ -1,10 +1,12 @@
-﻿import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import LoadingSpinner from '@components/common/LoadingSpinner';
 import ErrorMessage from '@components/common/ErrorMessage';
 import Header from '@components/common/Header';
 import PrivateRoute from '@components/common/PrivateRoute';
+import MicButton from '@components/chat/MicButton';
+import InputArea from '@components/chat/InputArea';
 
 const mockUseAuth = vi.fn();
 vi.mock('@hooks/useAuth', () => ({
@@ -54,27 +56,27 @@ describe('ErrorMessage', () => {
   it('renders retry button when onRetry provided', () => {
     const onRetry = vi.fn();
     render(<ErrorMessage message="Error" onRetry={onRetry} />);
-    fireEvent.click(screen.getByText('再試行'));
+    fireEvent.click(screen.getByText('\u518d\u8a66\u884c'));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('renders dismiss button when onDismiss provided', () => {
     const onDismiss = vi.fn();
     render(<ErrorMessage message="Error" onDismiss={onDismiss} />);
-    fireEvent.click(screen.getByText('閉じる'));
+    fireEvent.click(screen.getByText('\u9589\u3058\u308b'));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('renders both buttons when both handlers provided', () => {
     render(<ErrorMessage message="Error" onRetry={vi.fn()} onDismiss={vi.fn()} />);
-    expect(screen.getByText('再試行')).toBeTruthy();
-    expect(screen.getByText('閉じる')).toBeTruthy();
+    expect(screen.getByText('\u518d\u8a66\u884c')).toBeTruthy();
+    expect(screen.getByText('\u9589\u3058\u308b')).toBeTruthy();
   });
 
   it('renders no buttons when no handlers provided', () => {
     render(<ErrorMessage message="Error" />);
-    expect(screen.queryByText('再試行')).toBeNull();
-    expect(screen.queryByText('閉じる')).toBeNull();
+    expect(screen.queryByText('\u518d\u8a66\u884c')).toBeNull();
+    expect(screen.queryByText('\u9589\u3058\u308b')).toBeNull();
   });
 });
 
@@ -156,5 +158,157 @@ describe('PrivateRoute', () => {
     );
     expect(screen.queryByText('Protected')).toBeNull();
     expect(screen.getByText('Login Page')).toBeTruthy();
+  });
+});
+
+describe('MicButton', () => {
+  const defaultProps = {
+    isRecording: false,
+    isTranscribing: false,
+    disabled: false,
+    onMouseDown: vi.fn(),
+    onMouseUp: vi.fn(),
+    onTouchStart: vi.fn(),
+    onTouchEnd: vi.fn(),
+  };
+
+  it('renders with default state (待機中)', () => {
+    render(<MicButton {...defaultProps} />);
+    expect(screen.getByRole('button', { name: '音声入力' })).toBeTruthy();
+  });
+
+  it('renders recording state', () => {
+    render(<MicButton {...defaultProps} isRecording={true} />);
+    expect(screen.getByRole('button', { name: '録音中（離すと送信）' })).toBeTruthy();
+  });
+
+  it('renders transcribing state', () => {
+    render(<MicButton {...defaultProps} isTranscribing={true} />);
+    expect(screen.getByRole('button', { name: '変換中...' })).toBeTruthy();
+  });
+
+  it('renders disabled state', () => {
+    render(<MicButton {...defaultProps} disabled={true} />);
+    const btn = screen.getByRole('button', { name: '音声入力' });
+    expect(btn).toBeTruthy();
+  });
+
+  it('calls onMouseDown when pressed', () => {
+    const onMouseDown = vi.fn();
+    render(<MicButton {...defaultProps} onMouseDown={onMouseDown} />);
+    fireEvent.mouseDown(screen.getByRole('button', { name: '音声入力' }));
+    expect(onMouseDown).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onMouseUp when released', () => {
+    const onMouseUp = vi.fn();
+    render(<MicButton {...defaultProps} onMouseUp={onMouseUp} />);
+    fireEvent.mouseUp(screen.getByRole('button', { name: '音声入力' }));
+    expect(onMouseUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onMouseUp on mouse leave', () => {
+    const onMouseUp = vi.fn();
+    render(<MicButton {...defaultProps} onMouseUp={onMouseUp} />);
+    fireEvent.mouseLeave(screen.getByRole('button', { name: '音声入力' }));
+    expect(onMouseUp).toHaveBeenCalledTimes(1);
+  });
+});
+
+const mockUseAudioRecorder = vi.fn();
+
+vi.mock('@hooks/useAudioRecorder', () => ({
+  useAudioRecorder: (...args: unknown[]): unknown => mockUseAudioRecorder(...args),
+}));
+
+describe('InputArea', () => {
+  beforeEach(() => {
+    mockUseAudioRecorder.mockReturnValue({
+      isRecording: false,
+      isTranscribing: false,
+      transcribeError: null,
+      startRecording: vi.fn().mockResolvedValue(undefined),
+      stopRecording: vi.fn(),
+    });
+  });
+
+  it('renders textarea and send button', () => {
+    render(<InputArea onSend={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: 'メッセージ入力' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '送信' })).toBeTruthy();
+  });
+
+  it('calls onSend when send button is clicked with text', () => {
+    const onSend = vi.fn();
+    render(<InputArea onSend={onSend} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(onSend).toHaveBeenCalledWith('Hello');
+  });
+
+  it('does not call onSend when disabled', () => {
+    const onSend = vi.fn();
+    render(<InputArea onSend={onSend} disabled={true} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    fireEvent.change(textarea, { target: { value: 'Hello' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('sends message on Enter key', () => {
+    const onSend = vi.fn();
+    render(<InputArea onSend={onSend} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    fireEvent.change(textarea, { target: { value: 'Test message' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(onSend).toHaveBeenCalledWith('Test message');
+  });
+
+  it('does not send on Shift+Enter', () => {
+    const onSend = vi.fn();
+    render(<InputArea onSend={onSend} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    fireEvent.change(textarea, { target: { value: 'Test' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('shows transcribeError when present', () => {
+    mockUseAudioRecorder.mockReturnValue({
+      isRecording: false,
+      isTranscribing: false,
+      transcribeError: '録音エラーが発生しました',
+      startRecording: vi.fn().mockResolvedValue(undefined),
+      stopRecording: vi.fn(),
+    });
+    render(<InputArea onSend={vi.fn()} />);
+    expect(screen.getByText('録音エラーが発生しました')).toBeTruthy();
+  });
+
+  it('shows recording placeholder when isRecording', () => {
+    mockUseAudioRecorder.mockReturnValue({
+      isRecording: true,
+      isTranscribing: false,
+      transcribeError: null,
+      startRecording: vi.fn().mockResolvedValue(undefined),
+      stopRecording: vi.fn(),
+    });
+    render(<InputArea onSend={vi.fn()} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    expect(textarea.getAttribute('placeholder')).toBe('録音中...');
+  });
+
+  it('shows transcribing placeholder when isTranscribing', () => {
+    mockUseAudioRecorder.mockReturnValue({
+      isRecording: false,
+      isTranscribing: true,
+      transcribeError: null,
+      startRecording: vi.fn().mockResolvedValue(undefined),
+      stopRecording: vi.fn(),
+    });
+    render(<InputArea onSend={vi.fn()} />);
+    const textarea = screen.getByRole('textbox', { name: 'メッセージ入力' });
+    expect(textarea.getAttribute('placeholder')).toBe('変換中...');
   });
 });
