@@ -446,6 +446,37 @@ Resources:
                 Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
                 Resource: '*'
 
+  TranscribeHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub it-english-transcribe-handler-role-${Env}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TranscribeHandlerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - transcribe:StartTranscriptionJob
+                  - transcribe:GetTranscriptionJob
+                  - transcribe:DeleteTranscriptionJob
+                Resource: '*'
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+                Resource: !Sub ${AudioBucket.Arn}/transcribe-input/*
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action: [xray:PutTraceSegments, xray:PutTelemetryRecords]
+                Resource: '*'
+
   HistoryManagerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -508,6 +539,12 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/history-manager-${Env}
+      RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
+
+  LogGroupTranscribeHandler:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/transcribe-handler-${Env}
       RetentionInDays: !FindInMap [EnvConfig, !Ref Env, LogRetentionDays]
 
   # ============================================================
@@ -631,6 +668,31 @@ Resources:
             return { statusCode: 200, body: JSON.stringify({ message: 'user-manager placeholder' }) };
           };
 
+  LambdaTranscribeHandler:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupTranscribeHandler
+    Properties:
+      FunctionName: !Sub transcribe-handler-${Env}
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt TranscribeHandlerRole.Arn
+      MemorySize: 512
+      Timeout: 60
+      TracingConfig:
+        Mode: !FindInMap [EnvConfig, !Ref Env, XRayTracingMode]
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          DYNAMODB_REGION: ap-northeast-1
+          S3_BUCKET_AUDIO: !Ref AudioBucket
+          TRANSCRIBE_POLL_INTERVAL_MS: '1000'
+          TRANSCRIBE_POLL_MAX_ATTEMPTS: '30'
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'transcribe-handler placeholder' }) };
+          };
+
   LambdaHistoryManager:
     Type: AWS::Lambda::Function
     DependsOn: LogGroupHistoryManager
@@ -690,6 +752,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !GetAtt LambdaHistoryManager.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
+
+  LambdaPermissionTranscribeHandler:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaTranscribeHandler.Arn
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/*
@@ -1077,6 +1147,51 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaSessionManager.Arn}/invocations
 
+  # /transcribe
+  ResourceTranscribe:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: transcribe
+
+  MethodOptionsTranscribe:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceTranscribe
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: '200'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  MethodPostTranscribe:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref ResourceTranscribe
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaTranscribeHandler.Arn}/invocations
+
   # /feedbacks
   ResourceFeedbacks:
     Type: AWS::ApiGateway::Resource
@@ -1151,6 +1266,8 @@ Resources:
       - MethodOptionsSessionsEnd
       - MethodGetFeedbacksFeedbackId
       - MethodOptionsFeedbacksFeedbackId
+      - MethodPostTranscribe
+      - MethodOptionsTranscribe
     Properties:
       RestApiId: !Ref RestApi
 
@@ -1504,6 +1621,7 @@ Resources:
                   - !GetAtt LambdaSessionManager.Arn
                   - !GetAtt LambdaUserManager.Arn
                   - !GetAtt LambdaHistoryManager.Arn
+                  - !GetAtt LambdaTranscribeHandler.Arn
               # CloudFront (invalidation after frontend deploy)
               - Effect: Allow
                 Action:
@@ -1558,6 +1676,8 @@ Resources:
             Value: !Ref LambdaUserManager
           - Name: HISTORY_MANAGER_FUNCTION
             Value: !Ref LambdaHistoryManager
+          - Name: TRANSCRIBE_HANDLER_FUNCTION
+            Value: !Ref LambdaTranscribeHandler
       Source:
         Type: GITHUB
         Location: https://github.com/pci-ishiyama/llm_study_english_training

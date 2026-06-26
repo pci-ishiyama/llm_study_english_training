@@ -8,6 +8,7 @@ const functions = [
   'session-manager',
   'user-manager',
   'history-manager',
+  'transcribe-handler',
 ];
 
 const buildAll = async () => {

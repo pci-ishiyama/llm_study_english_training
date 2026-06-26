@@ -26,7 +26,7 @@ phases:
       - npm run bundle
       - echo "Packaging Lambda zip files..."
       - |
-        for FUNC in chat-handler feedback-generator session-manager user-manager history-manager; do
+        for FUNC in chat-handler feedback-generator session-manager user-manager history-manager transcribe-handler; do
           zip -j dist/${FUNC}.zip dist/${FUNC}/index.js
           aws s3 cp dist/${FUNC}.zip s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip
           echo "Uploaded ${FUNC}.zip to s3://${ARTIFACT_BUCKET}/lambda/${FUNC}.zip"
@@ -39,7 +39,8 @@ phases:
       - aws lambda update-function-code --function-name ${FEEDBACK_GENERATOR_FUNCTION} --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/feedback-generator.zip
       - aws lambda update-function-code --function-name ${SESSION_MANAGER_FUNCTION}    --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/session-manager.zip
       - aws lambda update-function-code --function-name ${USER_MANAGER_FUNCTION}       --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/user-manager.zip
-      - aws lambda update-function-code --function-name ${HISTORY_MANAGER_FUNCTION}    --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip
+      - aws lambda update-function-code --function-name ${HISTORY_MANAGER_FUNCTION}      --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/history-manager.zip
+      - aws lambda update-function-code --function-name ${TRANSCRIBE_HANDLER_FUNCTION}  --s3-bucket ${ARTIFACT_BUCKET} --s3-key lambda/transcribe-handler.zip
       - echo "All Lambda functions deployed successfully."
 
 reports:
